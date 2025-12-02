@@ -111,7 +111,6 @@ docker-compose down
 # Rebuild image
 docker-compose build
 
-# Rebuild with a specific OpenCode version
 OPENCODE_VERSION=1.0.120 docker-compose build
 
 # View logs
