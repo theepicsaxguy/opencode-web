@@ -95,7 +95,7 @@ docker-compose up -d
 ```
 
 The Docker setup automatically:
-- Installs OpenCode if not present
+- Installs OpenCode if not present (version 1.0.123 by default)
 - Builds and serves frontend from backend
 - Sets up persistent volumes for workspace and database
 - Includes health checks and auto-restart
@@ -110,6 +110,9 @@ docker-compose down
 
 # Rebuild image
 docker-compose build
+
+# Rebuild with a specific OpenCode version
+OPENCODE_VERSION=1.0.120 docker-compose build
 
 # View logs
 docker-compose logs -f
