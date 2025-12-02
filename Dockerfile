@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-RUN curl -fsSL https://bun.sh/install | bash && \
+RUN cd /tmp && curl -fsSL https://bun.sh/install | bash && \
     ln -s $HOME/.bun/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
@@ -47,7 +47,7 @@ RUN pnpm --filter frontend build
 
 FROM base AS runner
 
-RUN curl -fsSL https://opencode.ai/install | bash && \
+RUN cd /tmp && curl -fsSL https://opencode.ai/install | bash && \
     ln -s $HOME/.opencode/bin/opencode /usr/local/bin/opencode
 
 ENV NODE_ENV=production
