@@ -10,7 +10,6 @@ on:
       - 'shared/**'
       - 'Dockerfile'
       - 'scripts/**'
-      - '.github/workflows/docker-build.yml'
   push:
     branches:
       - main
@@ -20,7 +19,6 @@ on:
       - 'shared/**'
       - 'Dockerfile'
       - 'scripts/**'
-      - '.github/workflows/docker-build.yml'
     tags:
       - 'v*'
 
@@ -36,15 +34,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract metadata
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=ref,event=pr,prefix=pr-
             type=edge,branch=main
@@ -53,10 +50,6 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-          labels: |
-            org.opencontainers.image.title=OpenCode WebUI
-            org.opencontainers.image.description=OpenCode WebUI - A monorepo with frontend and backend
-            org.opencontainers.image.vendor=${{ github.repository_owner }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -64,7 +57,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Login to GHCR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
@@ -72,47 +65,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine platforms
-        id: platforms
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "platforms=linux/amd64" >> $GITHUB_OUTPUT
-          else
-            echo "platforms=linux/amd64,linux/arm64" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Determine cache mode
-        id: cache
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "mode=min" >> $GITHUB_OUTPUT
-          else
-            echo "mode=max" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and push Docker image
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: ${{ steps.platforms.outputs.platforms }}
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=${{ steps.cache.outputs.mode }}
-          provenance: true
-          sbom: false
-
-      - name: Generate build summary
-        run: |
-          echo "### Docker Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Platforms:** ${{ steps.platforms.outputs.platforms }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Cache Mode:** ${{ steps.cache.outputs.mode }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Push:** ${{ github.event_name != 'pull_request' }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          cache-to: type=gha,mode=max
