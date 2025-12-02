@@ -99,6 +99,7 @@ The Docker setup automatically:
 - Builds and serves frontend from backend
 - Sets up persistent volumes for workspace and database
 - Includes health checks and auto-restart
+- Runs as non-root user for enhanced security (Kubernetes PSP/PSA compatible)
 
 **Docker Commands:**
 ```bash
@@ -121,7 +122,25 @@ docker-compose restart
 docker exec -it opencode-web sh
 ```
 
-### Option 2: Local Development
+### Option 2: Kubernetes
+
+For production Kubernetes deployments:
+
+```bash
+# Apply the example manifest
+kubectl apply -f k8s-example.yaml
+
+# Or use Helm (when available)
+# helm install opencode-web ./charts/opencode-web
+```
+
+**Security Features:**
+- Runs as non-root user (UID 1000)
+- Compatible with Pod Security Policies (PSP) and Pod Security Admission (PSA)
+- Supports restrictive security contexts
+- See [SECURITY.md](./SECURITY.md) for detailed security configuration
+
+### Option 3: Local Development
 
 ```bash
 # Clone the repository
