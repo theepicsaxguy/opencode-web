@@ -54,6 +54,9 @@ RUN pnpm --filter frontend build
 
 FROM base AS runner
 
+ARG OPENCODE_VERSION=1.0.128
+RUN VERSION=${OPENCODE_VERSION} curl -fsSL https://opencode.ai/install | bash && \
+    ln -s $HOME/.opencode/bin/opencode /usr/local/bin/opencode
 USER node
 
 RUN mkdir -p /home/node/.local/bin && \
