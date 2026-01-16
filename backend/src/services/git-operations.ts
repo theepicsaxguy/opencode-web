@@ -22,6 +22,8 @@ function getGitEnvironment(database: Database): Record<string, string> {
     const settings = settingsService.getSettings('default')
     const gitCredentials = settings.preferences.gitCredentials || []
 
+    logger.debug(`Git environment: ${gitCredentials.length} credentials configured`)
+
     return createGitEnv(gitCredentials)
   } catch (error) {
     logger.warn('Failed to get git credentials from settings:', error)
@@ -313,6 +315,8 @@ export async function fetchGit(repoPath: string, database?: Database): Promise<v
   try {
     const fullPath = path.resolve(repoPath)
     const env = database ? getGitEnvironment(database) : undefined
+
+    logger.debug(`Fetching from ${fullPath}, env has GIT_CONFIG_COUNT: ${env?.GIT_CONFIG_COUNT}`)
 
     await executeCommand(['git', '-C', fullPath, 'fetch', '--all'], { env })
 

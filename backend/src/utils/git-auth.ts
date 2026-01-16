@@ -79,12 +79,6 @@ export function createGitHubGitEnv(gitToken: string): Record<string, string> {
   return createGitEnv([{ name: 'GitHub', host: 'https://github.com/', token: gitToken }])
 }
 
-export interface GitHubUserInfo {
-  name: string | null
-  email: string
-  login: string
-}
-
 export function findGitHubCredential(credentials: GitCredential[]): GitCredential | null {
   if (!credentials || credentials.length === 0) return null
   
@@ -96,6 +90,87 @@ export function findGitHubCredential(credentials: GitCredential[]): GitCredentia
       return false
     }
   }) || null
+}
+
+export function getCredentialForHost(credentials: GitCredential[], host: string): GitCredential | null {
+  if (!credentials || credentials.length === 0) return null
+  
+  const normalizedHost = normalizeHost(host)
+  
+  return credentials.find(cred => {
+    const credHost = normalizeHost(cred.host)
+    return credHost === normalizedHost || cred.host.includes(host) || host.includes(cred.host)
+  }) || null
+}
+
+export function createAskpassScript(credential: GitCredential): string {
+  const username = credential.username || getDefaultUsername(credential.host)
+  return `#!/bin/bash
+# Askpass script for ${credential.host}
+# Username: ${username}
+echo "${credential.token}"
+`
+}
+
+export async function createAskpassEnv(credential: GitCredential): Promise<Record<string, string>> {
+  const script = createAskpassScript(credential)
+  const scriptPath = `/tmp/git-askpass-${Date.now()}.sh`
+  
+  try {
+    const { writeFileSync, chmodSync } = await import('fs')
+    writeFileSync(scriptPath, script, { encoding: 'utf8' })
+    chmodSync(scriptPath, 0o755)
+  } catch {
+    logger.warn(`Failed to create askpass script at ${scriptPath}`)
+  }
+  
+  return {
+    GIT_ASKPASS: scriptPath,
+    GIT_TERMINAL_PROMPT: '0'
+  }
+}
+
+export function createGitEnvWithAskpass(credentials: GitCredential[]): Record<string, string> {
+  const env: Record<string, string> = {
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_CONFIG_COUNT: '0'
+  }
+  
+  if (!credentials || credentials.length === 0) {
+    return env
+  }
+  
+  for (let i = 0; i < credentials.length; i++) {
+    const cred = credentials[i]
+    if (!cred.host || !cred.token) continue
+    
+    const host = normalizeHost(cred.host)
+    const username = cred.username || getDefaultUsername(host)
+    const basicAuth = Buffer.from(`${username}:${cred.token}`, 'utf8').toString('base64')
+    
+    env[`GIT_CONFIG_KEY_${i}`] = `http.${host}.extraheader`
+    env[`GIT_CONFIG_VALUE_${i}`] = `AUTHORIZATION: basic ${basicAuth}`
+  }
+  
+  const credCount = credentials.filter(c => c.host && c.token).length
+  env.GIT_CONFIG_COUNT = String(credCount)
+  
+  return env
+}
+
+export interface GitHubUserInfo {
+  name: string | null
+  email: string
+  login: string
+}
+
+export function findGitHubCredentialFromToken(token: string): GitCredential {
+  return {
+    name: 'GitHub',
+    host: 'https://github.com/',
+    token,
+    username: 'x-access-token'
+  }
 }
 
 export interface GitIdentity {
