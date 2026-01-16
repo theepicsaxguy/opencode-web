@@ -51,7 +51,18 @@ export function createGitEnv(credentials: GitCredential[]): Record<string, strin
   }
   
   if (!credentials || credentials.length === 0) {
-    return env
+    const githubToken = process.env.GITHUB_TOKEN
+    if (githubToken) {
+      const cred: GitCredential = {
+        name: 'GitHub',
+        host: 'https://github.com/',
+        token: githubToken,
+        username: 'x-access-token'
+      }
+      credentials = [cred]
+    } else {
+      return env
+    }
   }
 
   let configIndex = 0
