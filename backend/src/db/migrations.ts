@@ -163,7 +163,7 @@ function migrateGitTokenToCredentials(db: Database): void {
           continue
         }
 
-        const { gitToken: _, ...rest } = parsed
+        const { ...rest } = parsed
         const migrated = {
           ...rest,
           gitCredentials: [{

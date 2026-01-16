@@ -3,28 +3,28 @@ import { describe, it, expect } from 'vitest'
 describe('Process Helper Functions', () => {
   describe('mapProcessState', () => {
     it('should map "running" state correctly', () => {
-      const state = 'running'
+      const _state = 'running'
       const mapped = 'running' as const
 
       expect(mapped).toBe('running')
     })
 
     it('should map "stopped" state to "stopped"', () => {
-      const state = 'stopped'
+      const _state = 'stopped'
       const mapped = 'stopped' as const
 
       expect(mapped).toBe('stopped')
     })
 
     it('should map "starting" state to "starting"', () => {
-      const state = 'starting'
+      const _state = 'starting'
       const mapped = 'starting' as const
 
       expect(mapped).toBe('starting')
     })
 
     it('should map unknown states to "error"', () => {
-      const state = 'unknown'
+      const _state = 'unknown'
       const mapped = 'error' as const
 
       expect(mapped).toBe('error')
@@ -62,28 +62,28 @@ describe('Process Helper Functions', () => {
 
   describe('validateRepoUrl', () => {
     it('should accept valid GitHub HTTPS URLs', () => {
-      const url = 'https://github.com/user/repo'
+      const _url = 'https://github.com/user/repo'
       const isValid = true
 
       expect(isValid).toBe(true)
     })
 
     it('should accept valid GitHub SSH URLs', () => {
-      const url = 'git@github.com:user/repo.git'
+      const _url = 'git@github.com:user/repo.git'
       const isValid = true
 
       expect(isValid).toBe(true)
     })
 
     it('should reject invalid URLs', () => {
-      const url = 'not-a-url'
+      const _url = 'not-a-url'
       const isValid = false
 
       expect(isValid).toBe(false)
     })
 
     it('should accept GitLab URLs', () => {
-      const url = 'https://gitlab.com/user/repo'
+      const _url = 'https://gitlab.com/user/repo'
       const isValid = true
 
       expect(isValid).toBe(true)
@@ -92,7 +92,7 @@ describe('Process Helper Functions', () => {
 
   describe('sanitizeEnvVars', () => {
     it('should filter out undefined values', () => {
-      const env = {
+      const _env = {
         DEFINED: 'value',
         UNDEFINED: undefined
       }

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useGitStatus, useGitLog } from '@/api/git'
 import { useGitMutations } from '@/hooks/useGitMutations'
 import { showToast } from '@/lib/toast'
-import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, Refresh, Download, Upload, Check, Plus, X } from 'lucide-react'
+import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, RefreshCw, Download, Upload, Check, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GitFileStatus, GitFileStatusType } from '@/types/git'
 
@@ -437,7 +437,7 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
             disabled={gitMutations.fetch.isPending}
             className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs bg-accent hover:bg-accent/80 disabled:opacity-50 rounded transition-colors"
           >
-            <Refresh className={cn('w-3.5 h-3.5', gitMutations.fetch.isPending && 'animate-spin')} />
+            <RefreshCw className={cn('w-3.5 h-3.5', gitMutations.fetch.isPending && 'animate-spin')} />
             Fetch
           </button>
           <button

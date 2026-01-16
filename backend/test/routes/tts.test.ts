@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as fs from 'fs/promises'
-import { logger } from '../../src/utils/logger'
 
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn(),
@@ -25,40 +24,23 @@ vi.mock('../../src/utils/logger', () => ({
   },
 }))
 
-const mockMkdir = fs.mkdir as any
-const mockReadFile = fs.readFile as any
-const mockWriteFile = fs.writeFile as any
-const mockReaddir = fs.readdir as any
-const mockStat = fs.stat as any
-const mockUnlink = fs.unlink as any
+const mockMkdir = fs.mkdir as unknown as vi.Mock
+const mockReadFile = fs.readFile as unknown as vi.Mock
+const mockReaddir = fs.readdir as unknown as vi.Mock
+const mockStat = fs.stat as unknown as vi.Mock
+const mockUnlink = fs.unlink as unknown as vi.Mock
 
 import { createTTSRoutes, cleanupExpiredCache, getCacheStats, generateCacheKey, ensureCacheDir, getCachedAudio, getCacheSize, cleanupOldestFiles } from '../../src/routes/tts'
 
 describe('TTS Routes', () => {
-  let mockDb: any
-  let ttsApp: any
-  let mockSettingsService: any
+  let mockDb: unknown
 
   beforeEach(() => {
     vi.clearAllMocks()
     
-    mockDb = {} as any
-    mockSettingsService = {
-      getSettings: vi.fn().mockReturnValue({
-        preferences: {
-          tts: {
-            enabled: true,
-            apiKey: 'test-key',
-            endpoint: 'https://api.openai.com/v1/audio/speech',
-            voice: 'alloy',
-            model: 'tts-1',
-            speed: 1.0,
-          },
-        },
-      }),
-    }
+    mockDb = {}
     
-    ttsApp = createTTSRoutes(mockDb)
+    createTTSRoutes(mockDb)
   })
 
   describe('generateCacheKey', () => {
@@ -108,7 +90,7 @@ describe('getCachedAudio', () => {
       mockStat.mockResolvedValue({
         mtimeMs: Date.now() - 1000,
         size: 1024,
-      } as any)
+      })
       mockReadFile.mockResolvedValue(audioBuffer)
       
       const result = await getCachedAudio(cacheKey)
@@ -125,7 +107,7 @@ describe('getCachedAudio', () => {
       mockStat.mockResolvedValue({
         mtimeMs: Date.now() - 25 * 60 * 60 * 1000,
         size: 1024,
-      } as any)
+      })
       mockUnlink.mockResolvedValue(undefined)
       
       const result = await getCachedAudio(cacheKey)
@@ -149,10 +131,10 @@ describe('getCachedAudio', () => {
 
   describe('getCacheSize', () => {
     it('should calculate correct cache size', async () => {
-      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3', 'readme.txt'] as any)
+      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3', 'readme.txt'])
       mockStat
-        .mockResolvedValueOnce({ size: 1024, mtimeMs: Date.now() } as any)
-        .mockResolvedValueOnce({ size: 2048, mtimeMs: Date.now() } as any)
+        .mockResolvedValueOnce({ size: 1024, mtimeMs: Date.now() })
+        .mockResolvedValueOnce({ size: 2048, mtimeMs: Date.now() })
       
       const size = await getCacheSize()
       
@@ -170,11 +152,11 @@ describe('getCachedAudio', () => {
 
   describe('cleanupMethods', () => {
     it('should remove oldest files when cache size limit exceeded', async () => {
-      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3', 'file3.mp3'] as any)
+      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3', 'file3.mp3'])
       mockStat
-        .mockResolvedValueOnce({ size: 1024, mtimeMs: 1000 } as any)
-        .mockResolvedValueOnce({ size: 2048, mtimeMs: 2000 } as any)
-        .mockResolvedValueOnce({ size: 1536, mtimeMs: 3000 } as any)
+        .mockResolvedValueOnce({ size: 1024, mtimeMs: 1000 })
+        .mockResolvedValueOnce({ size: 2048, mtimeMs: 2000 })
+        .mockResolvedValueOnce({ size: 1536, mtimeMs: 3000 })
       mockUnlink.mockResolvedValue(undefined)
       
       await cleanupOldestFiles(1500) // Need 1500 bytes freed
@@ -186,10 +168,10 @@ describe('getCachedAudio', () => {
 
     it('should return cache statistics for files', async () => {
       const currentTime = Date.now()
-      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3'] as any)
+      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3'])
       mockStat
-        .mockResolvedValueOnce({ size: 1024, mtimeMs: currentTime } as any)
-        .mockResolvedValueOnce({ size: 2048, mtimeMs: currentTime } as any)
+        .mockResolvedValueOnce({ size: 1024, mtimeMs: currentTime })
+        .mockResolvedValueOnce({ size: 2048, mtimeMs: currentTime })
       
       const stats = await getCacheStats()
       
@@ -199,11 +181,11 @@ describe('getCachedAudio', () => {
     })
 
     it('should cleanup expired cache files', async () => {
-      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3', 'expired.mp3'] as any)
+      mockReaddir.mockResolvedValue(['file1.mp3', 'file2.mp3', 'expired.mp3'])
       mockStat
-        .mockResolvedValueOnce({ size: 1024, mtimeMs: Date.now() } as any)
-        .mockResolvedValueOnce({ size: 2048, mtimeMs: Date.now() } as any)
-        .mockResolvedValueOnce({ size: 1536, mtimeMs: Date.now() - 25 * 60 * 60 * 1000 } as any)
+        .mockResolvedValueOnce({ size: 1024, mtimeMs: Date.now() })
+        .mockResolvedValueOnce({ size: 2048, mtimeMs: Date.now() })
+        .mockResolvedValueOnce({ size: 1536, mtimeMs: Date.now() - 25 * 60 * 60 * 1000 })
       mockUnlink.mockResolvedValue(undefined)
       
       const cleaned = await cleanupExpiredCache()

@@ -7,7 +7,7 @@ const mockDb = {
   exec: vi.fn(),
   close: vi.fn(),
   transaction: vi.fn()
-} as any
+}
 
 vi.mock('bun:sqlite', () => ({
   Database: vi.fn(() => mockDb)

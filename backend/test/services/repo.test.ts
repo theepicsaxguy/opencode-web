@@ -45,7 +45,7 @@ describe('initLocalRepo', () => {
 
   it('creates new empty git repo for relative path', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const localPath = 'my-new-repo'
     
     getRepoByLocalPath.mockReturnValue(null)
@@ -69,7 +69,7 @@ describe('initLocalRepo', () => {
 
   it('copies existing git repo from absolute path', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const absolutePath = '/Users/test/existing-repo'
     
     getRepoByLocalPath.mockReturnValue(null)
@@ -104,7 +104,7 @@ describe('initLocalRepo', () => {
 
   it('returns existing repo if local path already in database (relative)', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const localPath = 'existing-repo'
     const existingRepo = {
       id: 100,
@@ -123,7 +123,7 @@ describe('initLocalRepo', () => {
 
   it('throws error when absolute path does not exist', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const nonExistentPath = '/Users/test/non-existent'
     
     executeCommand.mockRejectedValueOnce(new Error('Command failed'))
@@ -133,7 +133,7 @@ describe('initLocalRepo', () => {
 
   it('throws error when repo name already exists in workspace', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const absolutePath = '/Users/test/existing-repo'
     
     let callCount = 0
@@ -149,7 +149,7 @@ describe('initLocalRepo', () => {
 
   it('throws error when absolute path is not a git repo', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const nonGitPath = '/Users/test/not-a-repo'
     
     let callCount = 0
@@ -164,7 +164,7 @@ describe('initLocalRepo', () => {
 
   it('creates new empty repo with custom branch', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const localPath = 'custom-branch-repo'
     const branch = 'develop'
     
@@ -189,7 +189,7 @@ describe('initLocalRepo', () => {
 
   it('normalizes trailing slashes in path', async () => {
     const { initLocalRepo } = await import('../../src/services/repo')
-    const database = {} as any
+    const database = {} as unknown as Database
     const localPath = 'my-repo/'
     
     getRepoByLocalPath.mockReturnValue(null)

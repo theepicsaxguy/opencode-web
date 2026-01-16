@@ -10,9 +10,9 @@ vi.mock('fs', () => ({
   },
 }))
 
-const readFile = fs.readFile as any
-const writeFile = fs.writeFile as any
-const mkdirSpy = fs.mkdir as any
+const readFile = fs.readFile as unknown as vi.Mock
+const writeFile = fs.writeFile as unknown as vi.Mock
+const mkdirSpy = fs.mkdir as unknown as vi.Mock
 
 vi.mock('@opencode-manager/shared/config/env', () => ({
   getAuthPath: () => '/test/auth.json',

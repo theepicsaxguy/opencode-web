@@ -22,8 +22,8 @@ describe('fetchGitHubUserInfo', () => {
         { email: 'verified@email.com', primary: true, verified: true }
       ])
     }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await fetchGitHubUserInfo('test_token')
@@ -43,8 +43,8 @@ describe('fetchGitHubUserInfo', () => {
       })
     }
     const emailsResponse = { ok: false }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await fetchGitHubUserInfo('test_token')
@@ -65,8 +65,8 @@ describe('fetchGitHubUserInfo', () => {
       ok: true,
       json: vi.fn().mockResolvedValue([])
     }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await fetchGitHubUserInfo('test_token')
@@ -89,8 +89,8 @@ describe('fetchGitHubUserInfo', () => {
         { email: 'unverified@email.com', primary: false, verified: false }
       ])
     }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await fetchGitHubUserInfo('test_token')
@@ -100,8 +100,8 @@ describe('fetchGitHubUserInfo', () => {
 
   it('should return null when user API fails', async () => {
     const userResponse = { ok: false }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
 
     const result = await fetchGitHubUserInfo('invalid_token')
 
@@ -117,8 +117,8 @@ describe('fetchGitHubUserInfo', () => {
         id: null
       })
     }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
 
     const result = await fetchGitHubUserInfo('test_token')
 
@@ -134,8 +134,8 @@ describe('fetchGitHubUserInfo', () => {
         id: 123456
       })
     }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
 
     const result = await fetchGitHubUserInfo('test_token')
 
@@ -152,8 +152,8 @@ describe('fetchGitHubUserInfo', () => {
       })
     }
     const emailsResponse = { ok: false }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await fetchGitHubUserInfo('test_token')
@@ -163,8 +163,8 @@ describe('fetchGitHubUserInfo', () => {
   })
 
   it('should handle network errors gracefully', async () => {
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockRejectedValue(new Error('Network error'))
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockRejectedValue(new Error('Network error'))
 
     const result = await fetchGitHubUserInfo('test_token')
 
@@ -186,8 +186,8 @@ describe('fetchGitHubUserInfo', () => {
         { email: 'verified@email.com', primary: true, verified: true }
       ])
     }
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     await fetchGitHubUserInfo('test_token')
@@ -254,7 +254,7 @@ describe('findGitHubCredential', () => {
 describe('resolveGitIdentity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    global.fetch = vi.fn() as any;
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
   })
 
   it('should return manual identity when both name and email provided', async () => {
@@ -291,8 +291,8 @@ describe('resolveGitIdentity', () => {
       ])
     }
 
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await resolveGitIdentity(manual, credentials)
@@ -324,8 +324,8 @@ describe('resolveGitIdentity', () => {
       ])
     }
 
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await resolveGitIdentity(manual, credentials)
@@ -357,8 +357,8 @@ describe('resolveGitIdentity', () => {
       ])
     }
 
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce(userResponse)
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce(userResponse)
       .mockResolvedValueOnce(emailsResponse)
 
     const result = await resolveGitIdentity(manual, credentials)
@@ -375,8 +375,8 @@ describe('resolveGitIdentity', () => {
       { name: 'github', host: 'https://github.com/', token: 'invalid-token' },
     ]
 
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce({ ok: false })
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce({ ok: false })
 
     const result = await resolveGitIdentity(manual, credentials)
 
@@ -402,8 +402,8 @@ describe('resolveGitIdentity', () => {
       { name: 'github', host: 'https://github.com/', token: 'invalid-token' },
     ]
 
-    global.fetch = vi.fn() as any;
-    (global.fetch as any).mockResolvedValueOnce({ ok: false })
+    global.fetch = vi.fn() as unknown as typeof global.fetch;
+    (global.fetch as unknown as vi.Mock).mockResolvedValueOnce({ ok: false })
 
     const result = await resolveGitIdentity(manual, credentials)
 

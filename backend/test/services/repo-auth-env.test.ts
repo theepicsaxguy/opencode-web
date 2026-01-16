@@ -46,7 +46,7 @@ describe('repoService.cloneRepo auth env', () => {
   it('passes github extraheader env to git clone', async () => {
     const { cloneRepo } = await import('../../src/services/repo')
 
-    const database = {} as any
+    const database = {} as unknown as Database
     const repoUrl = 'https://github.com/acme/forge.git'
 
     getRepoByUrlAndBranch.mockReturnValue(null)
