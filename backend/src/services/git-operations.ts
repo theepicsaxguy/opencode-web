@@ -5,7 +5,7 @@ import { SettingsService } from './settings'
 import type { Database } from 'bun:sqlite'
 import path from 'path'
 import fs from 'fs/promises'
-import { createGitEnv, createNoPromptGitEnv } from '../utils/git-auth'
+import { createGitEnv, createNoPromptGitEnv, createGitIdentityEnv, resolveGitIdentity, type GitIdentity } from '../utils/git-auth'
 
 async function hasCommits(repoPath: string): Promise<boolean> {
   try {
@@ -26,6 +26,20 @@ function getGitEnvironment(database: Database): Record<string, string> {
   } catch (error) {
     logger.warn('Failed to get git credentials from settings:', error)
     return createNoPromptGitEnv()
+  }
+}
+
+async function getGitIdentity(database: Database): Promise<GitIdentity | null> {
+  try {
+    const settingsService = new SettingsService(database)
+    const settings = settingsService.getSettings('default')
+    const manualIdentity = settings.preferences.gitIdentity
+    const gitCredentials = settings.preferences.gitCredentials || []
+
+    return await resolveGitIdentity(manualIdentity, gitCredentials)
+  } catch (error) {
+    logger.warn('Failed to get git identity from settings:', error)
+    return null
   }
 }
 
@@ -53,6 +67,14 @@ export interface FileDiffResponse {
   additions: number
   deletions: number
   isBinary: boolean
+}
+
+export interface GitCommit {
+  hash: string
+  authorName: string
+  authorEmail: string
+  date: string
+  message: string
 }
 
 function parseStatusCode(code: string): GitFileStatusType {
@@ -284,5 +306,160 @@ export async function getFileDiff(repoPath: string, filePath: string, database?:
   } catch (error: unknown) {
     logger.error(`Failed to get file diff for ${filePath}:`, error)
     throw new Error(`Failed to get file diff: ${getErrorMessage(error)}`)
+  }
+}
+
+export async function fetchGit(repoPath: string, database?: Database): Promise<void> {
+  try {
+    const fullPath = path.resolve(repoPath)
+    const env = database ? getGitEnvironment(database) : undefined
+
+    await executeCommand(['git', '-C', fullPath, 'fetch', '--all'], { env })
+
+    logger.info(`Successfully fetched changes for ${repoPath}`)
+  } catch (error: unknown) {
+    logger.error(`Failed to fetch changes for ${repoPath}:`, error)
+    throw new Error(`Failed to fetch changes: ${getErrorMessage(error)}`)
+  }
+}
+
+export async function pullGit(repoPath: string, database?: Database): Promise<void> {
+  try {
+    const fullPath = path.resolve(repoPath)
+    const env = database ? getGitEnvironment(database) : undefined
+
+    await executeCommand(['git', '-C', fullPath, 'pull'], { env })
+
+    logger.info(`Successfully pulled changes for ${repoPath}`)
+  } catch (error: unknown) {
+    logger.error(`Failed to pull changes for ${repoPath}:`, error)
+    throw new Error(`Failed to pull changes: ${getErrorMessage(error)}`)
+  }
+}
+
+export async function commitGit(repoPath: string, message: string, stagedPaths?: string[], database?: Database): Promise<void> {
+  try {
+    const fullPath = path.resolve(repoPath)
+    const env = database ? getGitEnvironment(database) : undefined
+
+    const args = ['git', '-C', fullPath, 'commit', '-m', message]
+
+    if (stagedPaths && stagedPaths.length > 0) {
+      args.push('--')
+      args.push(...stagedPaths)
+    }
+
+    const identityEnv = database ? await getGitIdentity(database) : null
+    const finalEnv = identityEnv ? { ...env, ...createGitIdentityEnv(identityEnv) } : env
+
+    await executeCommand(args, { env: finalEnv })
+
+    logger.info(`Successfully committed changes for ${repoPath}: ${message}`)
+  } catch (error: unknown) {
+    logger.error(`Failed to commit changes for ${repoPath}:`, error)
+    throw new Error(`Failed to commit changes: ${getErrorMessage(error)}`)
+  }
+}
+
+export async function pushGit(repoPath: string, setUpstream: boolean, database?: Database): Promise<void> {
+  try {
+    const fullPath = path.resolve(repoPath)
+    const env = database ? getGitEnvironment(database) : undefined
+
+    const args = ['git', '-C', fullPath, 'push']
+
+    if (setUpstream) {
+      args.push('--set-upstream')
+      args.push('origin')
+      args.push('HEAD')
+    }
+
+    await executeCommand(args, { env })
+
+    logger.info(`Successfully pushed changes for ${repoPath}`)
+  } catch (error: unknown) {
+    logger.error(`Failed to push changes for ${repoPath}:`, error)
+    throw new Error(`Failed to push changes: ${getErrorMessage(error)}`)
+  }
+}
+
+export async function stageFiles(repoPath: string, paths: string[], database?: Database): Promise<void> {
+  try {
+    const fullPath = path.resolve(repoPath)
+    const env = database ? getGitEnvironment(database) : undefined
+
+    if (paths.length === 0) {
+      return
+    }
+
+    for (const filePath of paths) {
+      await executeCommand(['git', '-C', fullPath, 'add', filePath], { env })
+    }
+
+    logger.info(`Successfully staged ${paths.length} file(s) for ${repoPath}`)
+  } catch (error: unknown) {
+    logger.error(`Failed to stage files for ${repoPath}:`, error)
+    throw new Error(`Failed to stage files: ${getErrorMessage(error)}`)
+  }
+}
+
+export async function unstageFiles(repoPath: string, paths: string[], database?: Database): Promise<void> {
+  try {
+    const fullPath = path.resolve(repoPath)
+    const env = database ? getGitEnvironment(database) : undefined
+
+    if (paths.length === 0) {
+      return
+    }
+
+    for (const filePath of paths) {
+      await executeCommand(['git', '-C', fullPath, 'restore', '--staged', filePath], { env })
+    }
+
+    logger.info(`Successfully unstaged ${paths.length} file(s) for ${repoPath}`)
+  } catch (error: unknown) {
+    logger.error(`Failed to unstage files for ${repoPath}:`, error)
+    throw new Error(`Failed to unstage files: ${getErrorMessage(error)}`)
+  }
+}
+
+export async function getGitLog(repoPath: string, limit: number = 10, database?: Database): Promise<GitCommit[]> {
+  try {
+    const fullPath = path.resolve(repoPath)
+    const env = database ? getGitEnvironment(database) : undefined
+
+    const output = await executeCommand([
+      'git',
+      '-C',
+      fullPath,
+      'log',
+      `-n`,
+      String(limit),
+      '--format=%H|%an|%ae|%ai|%s'
+    ], { env })
+
+    const lines = output.trim().split('\n')
+    const commits: GitCommit[] = []
+
+    for (const line of lines) {
+      if (!line.trim()) continue
+
+      const [hash, authorName, authorEmail, date, message] = line.split('|', 5)
+
+      if (hash) {
+        commits.push({
+          hash,
+          authorName,
+          authorEmail,
+          date,
+          message: message || ''
+        })
+      }
+    }
+
+    return commits
+  } catch (error: unknown) {
+    logger.error(`Failed to get git log for ${repoPath}:`, error)
+    throw new Error(`Failed to get git log: ${getErrorMessage(error)}`)
   }
 }

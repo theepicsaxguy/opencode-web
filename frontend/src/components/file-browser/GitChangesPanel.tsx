@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
-import { useGitStatus } from '@/api/git'
-import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ArrowUp, ArrowDown, Folder, FolderOpen } from 'lucide-react'
+import { useGitStatus, useGitLog } from '@/api/git'
+import { useGitMutations } from '@/hooks/useGitMutations'
+import { showToast } from '@/lib/toast'
+import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, Refresh, Download, Upload, Check, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GitFileStatus, GitFileStatusType } from '@/types/git'
 
@@ -141,9 +143,11 @@ interface GitTreeNodeItemProps {
   expandedPaths: Set<string>
   onToggle: (path: string) => void
   onSelect: (path: string) => void
+  onStage: (path: string) => void
+  onUnstage: (path: string) => void
 }
 
-function GitTreeNodeItem({ node, level, selectedFile, expandedPaths, onToggle, onSelect }: GitTreeNodeItemProps) {
+function GitTreeNodeItem({ node, level, selectedFile, expandedPaths, onToggle, onSelect, onStage, onUnstage }: GitTreeNodeItemProps) {
   const isExpanded = expandedPaths.has(node.path)
   const isSelected = selectedFile === node.path
 
@@ -194,6 +198,8 @@ function GitTreeNodeItem({ node, level, selectedFile, expandedPaths, onToggle, o
                 expandedPaths={expandedPaths}
                 onToggle={onToggle}
                 onSelect={onSelect}
+                onStage={onStage}
+                onUnstage={onUnstage}
               />
             ))}
           </div>
@@ -205,12 +211,22 @@ function GitTreeNodeItem({ node, level, selectedFile, expandedPaths, onToggle, o
   const file = node.file!
   const config = statusConfig[file.status]
   const Icon = config.icon
+  const isStaged = file.staged
+
+  const handleStageClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (isStaged) {
+      onUnstage(node.path)
+    } else {
+      onStage(node.path)
+    }
+  }
 
   return (
     <button
       onClick={() => onSelect(node.path)}
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/50 transition-colors rounded-md',
+        'w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent/50 transition-colors rounded-md group',
         isSelected && 'bg-accent'
       )}
       style={{ paddingLeft: `${level * 12 + 12}px` }}
@@ -220,7 +236,7 @@ function GitTreeNodeItem({ node, level, selectedFile, expandedPaths, onToggle, o
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1">
           <span className="text-sm text-foreground truncate">{node.name}</span>
-          {file.staged && (
+          {isStaged && (
             <span className="text-[10px] px-1 py-0.5 bg-green-500/20 text-green-500 rounded">staged</span>
           )}
         </div>
@@ -228,15 +244,27 @@ function GitTreeNodeItem({ node, level, selectedFile, expandedPaths, onToggle, o
           <span className="text-xs text-muted-foreground truncate block">← {file.oldPath}</span>
         )}
       </div>
-      <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+      <button
+        onClick={handleStageClick}
+        className={cn(
+          'w-7 h-7 flex items-center justify-center rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity',
+          isStaged ? 'text-red-500 hover:bg-red-500/10' : 'text-green-500 hover:bg-green-500/10'
+        )}
+      >
+        {isStaged ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+      </button>
     </button>
   )
 }
 
 export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChangesPanelProps) {
   const { data: status, isLoading, error } = useGitStatus(repoId)
+  const { data: commits } = useGitLog(repoId, 5)
+  const gitMutations = useGitMutations(repoId)
   const [filter, setFilter] = useState<GitFileStatusType | 'all'>('all')
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+  const [commitMessage, setCommitMessage] = useState('')
+  const [showLog, setShowLog] = useState(false)
 
   const tree = useMemo(() => {
     if (!status?.files) return []
@@ -246,6 +274,10 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
   const filteredTree = useMemo(() => {
     return filterTree(tree, filter)
   }, [tree, filter])
+
+  const stagedFilesCount = status?.files.filter(f => f.staged).length || 0
+
+  const canCommit = commitMessage.trim().length > 0 && stagedFilesCount > 0
 
   const handleToggle = (path: string) => {
     setExpandedPaths(prev => {
@@ -257,6 +289,65 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
       }
       return next
     })
+  }
+
+  const handleStage = async (path: string) => {
+    try {
+      await gitMutations.stageFiles.mutateAsync([path])
+      showToast.success(`Staged: ${path}`)
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'Failed to stage file')
+    }
+  }
+
+  const handleUnstage = async (path: string) => {
+    try {
+      await gitMutations.unstageFiles.mutateAsync([path])
+      showToast.success(`Unstaged: ${path}`)
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'Failed to unstage file')
+    }
+  }
+
+  const handleFetch = async () => {
+    try {
+      await gitMutations.fetch.mutateAsync()
+      showToast.success('Fetch completed')
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'Fetch failed')
+    }
+  }
+
+  const handlePull = async () => {
+    try {
+      await gitMutations.pull.mutateAsync()
+      showToast.success('Pull completed')
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'Pull failed')
+    }
+  }
+
+  const handlePush = async () => {
+    try {
+      const setUpstream = status?.behind > 0 || !status?.hasChanges
+      await gitMutations.push.mutateAsync({ setUpstream })
+      showToast.success(setUpstream ? 'Branch published' : 'Push completed')
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'Push failed')
+    }
+  }
+
+  const handleCommit = async () => {
+    if (!canCommit) return
+
+    try {
+      const stagedPaths = status?.files.filter(f => f.staged).map(f => f.path)
+      await gitMutations.commit.mutateAsync({ message: commitMessage.trim(), stagedPaths })
+      showToast.success('Commit created')
+      setCommitMessage('')
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : 'Commit failed')
+    }
   }
 
   if (isLoading) {
@@ -276,11 +367,11 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
     )
   }
 
-  if (!status || !status.hasChanges) {
+  if (!status) {
     return (
       <div className="text-center py-8 text-muted-foreground">
         <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">No uncommitted changes</p>
+        <p className="text-sm">No git repository</p>
       </div>
     )
   }
@@ -289,6 +380,8 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
     acc[file.status] = (acc[file.status] || 0) + 1
     return acc
   }, {} as Record<string, number>)
+
+  const shouldShowPublishBranch = status.behind > 0
 
   return (
     <div className="flex flex-col h-full">
@@ -337,6 +430,56 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
           })}
         </div>
       </div>
+      <div className="px-3 py-2 border-b border-border flex-shrink-0 space-y-2">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleFetch}
+            disabled={gitMutations.fetch.isPending}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs bg-accent hover:bg-accent/80 disabled:opacity-50 rounded transition-colors"
+          >
+            <Refresh className={cn('w-3.5 h-3.5', gitMutations.fetch.isPending && 'animate-spin')} />
+            Fetch
+          </button>
+          <button
+            onClick={handlePull}
+            disabled={gitMutations.pull.isPending}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs bg-accent hover:bg-accent/80 disabled:opacity-50 rounded transition-colors"
+          >
+            <Download className={cn('w-3.5 h-3.5', gitMutations.pull.isPending && 'animate-spin')} />
+            Pull
+          </button>
+          <button
+            onClick={handlePush}
+            disabled={gitMutations.push.isPending}
+            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs bg-accent hover:bg-accent/80 disabled:opacity-50 rounded transition-colors"
+          >
+            <Upload className={cn('w-3.5 h-3.5', gitMutations.push.isPending && 'animate-spin')} />
+            {shouldShowPublishBranch ? 'Publish branch' : 'Push'}
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            value={commitMessage}
+            onChange={(e) => setCommitMessage(e.target.value)}
+            placeholder="Commit message"
+            className="flex-1 px-2 py-1.5 text-xs bg-accent/50 focus:bg-accent focus:outline-none rounded transition-colors"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && canCommit) {
+                handleCommit()
+              }
+            }}
+          />
+          <button
+            onClick={handleCommit}
+            disabled={!canCommit || gitMutations.commit.isPending}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:hover:bg-primary rounded transition-colors"
+          >
+            <Check className="w-3.5 h-3.5" />
+            Commit {stagedFilesCount > 0 && `(${stagedFilesCount})`}
+          </button>
+        </div>
+      </div>
       <div className="flex-1 overflow-y-auto p-2">
         <div className="space-y-0.5 pb-8">
           {filteredTree.map((node) => (
@@ -348,9 +491,40 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
               expandedPaths={expandedPaths}
               onToggle={handleToggle}
               onSelect={onFileSelect}
+              onStage={handleStage}
+              onUnstage={handleUnstage}
             />
           ))}
         </div>
+      </div>
+      <div className="border-t border-border flex-shrink-0">
+        <button
+          onClick={() => setShowLog(!showLog)}
+          className="w-full px-3 py-2 flex items-center justify-between text-xs hover:bg-accent/50 transition-colors"
+        >
+          <span className="text-muted-foreground">Commit History</span>
+          {showLog ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+        {showLog && (
+          <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
+            {commits?.map((commit) => (
+              <div key={commit.hash} className="text-xs space-y-0.5 py-1 border-b border-border/50 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-muted-foreground text-[10px]">{commit.hash.slice(0, 7)}</span>
+                  <span className="text-foreground font-medium truncate flex-1">{commit.message}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground text-[10px]">
+                  <span>{commit.authorName}</span>
+                  <span>•</span>
+                  <span>{new Date(commit.date).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))}
+            {!commits || commits.length === 0 && (
+              <div className="text-center py-2 text-muted-foreground text-xs">No commits yet</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

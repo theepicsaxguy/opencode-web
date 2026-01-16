@@ -23,3 +23,11 @@ export interface FileDiffResponse {
   deletions: number
   isBinary: boolean
 }
+
+export interface GitCommit {
+  hash: string
+  authorName: string
+  authorEmail: string
+  date: string
+  message: string
+}

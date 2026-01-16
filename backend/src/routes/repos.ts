@@ -300,25 +300,212 @@ app.get('/', async (c) => {
     try {
       const id = parseInt(c.req.param('id'))
       const filePath = c.req.query('path')
-      
+
       if (!filePath) {
         return c.json({ error: 'path query parameter is required' }, 400)
       }
-      
+
       const repo = db.getRepoById(database, id)
-      
+
       if (!repo) {
         return c.json({ error: 'Repo not found' }, 404)
       }
-      
+
       const repoPath = path.resolve(getReposPath(), repo.localPath)
        const diff = await gitOperations.getFileDiff(repoPath, filePath, database)
 
-      
+
       return c.json(diff)
     } catch (error: unknown) {
       logger.error('Failed to get file diff:', error)
       return c.json({ error: getErrorMessage(error) }, 500)
+    }
+  })
+
+  app.post('/:id/git/fetch', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const repoPath = path.resolve(getReposPath(), repo.localPath)
+      await gitOperations.fetchGit(repoPath, database)
+
+      const status = await gitOperations.getGitStatus(repoPath, database)
+      return c.json(status)
+    } catch (error: unknown) {
+      logger.error('Failed to fetch git:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: getErrorMessage(error) }, 401)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+    }
+  })
+
+  app.post('/:id/git/pull', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const repoPath = path.resolve(getReposPath(), repo.localPath)
+      await gitOperations.pullGit(repoPath, database)
+
+      const status = await gitOperations.getGitStatus(repoPath, database)
+      return c.json(status)
+    } catch (error: unknown) {
+      logger.error('Failed to pull git:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: getErrorMessage(error) }, 401)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+    }
+  })
+
+  app.post('/:id/git/commit', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const body = await c.req.json()
+      const { message, stagedPaths } = body
+
+      if (!message) {
+        return c.json({ error: 'message is required' }, 400)
+      }
+
+      const repoPath = path.resolve(getReposPath(), repo.localPath)
+      await gitOperations.commitGit(repoPath, message, stagedPaths, database)
+
+      const status = await gitOperations.getGitStatus(repoPath, database)
+      return c.json(status)
+    } catch (error: unknown) {
+      logger.error('Failed to commit git:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: getErrorMessage(error) }, 401)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+    }
+  })
+
+  app.post('/:id/git/push', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const body = await c.req.json()
+      const { setUpstream } = body
+
+      const repoPath = path.resolve(getReposPath(), repo.localPath)
+      await gitOperations.pushGit(repoPath, setUpstream || false, database)
+
+      const status = await gitOperations.getGitStatus(repoPath, database)
+      return c.json(status)
+    } catch (error: unknown) {
+      logger.error('Failed to push git:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: getErrorMessage(error) }, 401)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+    }
+  })
+
+  app.post('/:id/git/stage', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const body = await c.req.json()
+      const { paths } = body
+
+      if (!paths || !Array.isArray(paths)) {
+        return c.json({ error: 'paths is required and must be an array' }, 400)
+      }
+
+      const repoPath = path.resolve(getReposPath(), repo.localPath)
+      await gitOperations.stageFiles(repoPath, paths, database)
+
+      const status = await gitOperations.getGitStatus(repoPath, database)
+      return c.json(status)
+    } catch (error: unknown) {
+      logger.error('Failed to stage files:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: getErrorMessage(error) }, 401)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+    }
+  })
+
+  app.post('/:id/git/unstage', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const body = await c.req.json()
+      const { paths } = body
+
+      if (!paths || !Array.isArray(paths)) {
+        return c.json({ error: 'paths is required and must be an array' }, 400)
+      }
+
+      const repoPath = path.resolve(getReposPath(), repo.localPath)
+      await gitOperations.unstageFiles(repoPath, paths, database)
+
+      const status = await gitOperations.getGitStatus(repoPath, database)
+      return c.json(status)
+    } catch (error: unknown) {
+      logger.error('Failed to unstage files:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: getErrorMessage(error) }, 401)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+    }
+  })
+
+  app.post('/:id/git/log', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const body = await c.req.json()
+      const { limit } = body
+
+      const repoPath = path.resolve(getReposPath(), repo.localPath)
+      const log = await gitOperations.getGitLog(repoPath, limit || 10, database)
+
+      return c.json(log)
+    } catch (error: unknown) {
+      logger.error('Failed to get git log:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: getErrorMessage(error) }, 401)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }
   })
 

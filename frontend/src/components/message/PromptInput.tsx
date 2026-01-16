@@ -425,7 +425,8 @@ export const PromptInput = forwardRef<PromptInputHandle, PromptInputProps>(funct
         if (text && text.trim()) {
           return
         }
-      } catch (err) {
+      } catch {
+        // Ignore clipboard read errors on iOS
       }
       
       event.preventDefault()
