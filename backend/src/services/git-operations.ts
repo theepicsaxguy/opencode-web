@@ -7,9 +7,9 @@ import path from 'path'
 import fs from 'fs/promises'
 import { createGitEnv, createNoPromptGitEnv, createGitIdentityEnv, resolveGitIdentity, type GitIdentity } from '../utils/git-auth'
 
-async function hasCommits(repoPath: string): Promise<boolean> {
+async function hasCommits(repoPath: string, env?: Record<string, string>): Promise<boolean> {
   try {
-    await executeCommand(['git', '-C', repoPath, 'rev-parse', 'HEAD'], { silent: true })
+    await executeCommand(['git', '-C', repoPath, 'rev-parse', 'HEAD'], { env, silent: true })
     return true
   } catch {
     return false
@@ -268,7 +268,7 @@ export async function getFileDiff(repoPath: string, filePath: string, database?:
       }
     } else {
       try {
-        const repoHasCommits = await hasCommits(fullRepoPath)
+        const repoHasCommits = await hasCommits(fullRepoPath, env)
         if (repoHasCommits) {
           diff = await executeCommand(['git', '-C', fullRepoPath, 'diff', 'HEAD', '--', filePath], { env })
         } else {

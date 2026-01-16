@@ -45,7 +45,10 @@ function normalizeHost(host: string): string {
 }
 
 export function createGitEnv(credentials: GitCredential[]): Record<string, string> {
-  const env: Record<string, string> = { GIT_TERMINAL_PROMPT: '0' }
+  const env: Record<string, string> = { 
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_CONFIG_COUNT: '0'
+  }
   
   if (!credentials || credentials.length === 0) {
     return env
@@ -67,9 +70,7 @@ export function createGitEnv(credentials: GitCredential[]): Record<string, strin
     configIndex++
   }
 
-  if (configIndex > 0) {
-    env.GIT_CONFIG_COUNT = String(configIndex)
-  }
+  env.GIT_CONFIG_COUNT = String(configIndex)
 
   return env
 }
