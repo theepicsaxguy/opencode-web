@@ -46,5 +46,8 @@ export function handleGitError(error: unknown, c: Context<any, any, any>) {
   if (error instanceof GitNotFoundError) {
     return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
   }
+  if (error instanceof GitOperationError) {
+    return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+  }
   return c.json({ error: getErrorMessage(error), code: 'UNKNOWN' }, 500)
 }

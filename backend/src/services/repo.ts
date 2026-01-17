@@ -8,13 +8,7 @@ import { SettingsService } from './settings'
 import { createGitEnv, createNoPromptGitEnv, createGitHubGitEnv, isGitHubHttpsUrl } from '../utils/git-auth'
 import { getReposPath } from '@opencode-manager/shared/config/env'
 import path from 'path'
-
-export class GitAuthenticationError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'GitAuthenticationError'
-  }
-}
+import { GitAuthenticationError } from '../errors/git-errors'
 
 interface ErrorWithMessage {
   message?: string
@@ -69,7 +63,11 @@ async function executeGitWithFallback(
 
     const url = cmd.find(arg => arg.includes('http://') || arg.includes('https://'))
     if (!url) {
-      return await executeCommand(cmd, { cwd, env: createNoPromptGitEnv(), silent })
+      try {
+        return await executeCommand(cmd, { cwd, env: createNoPromptGitEnv(), silent })
+      } catch (finalError: unknown) {
+        throw new GitAuthenticationError(`Authentication failed for Git command: ${getErrorMessage(error)}`)
+      }
     }
 
     try {
@@ -79,14 +77,16 @@ async function executeGitWithFallback(
         const ghEnv = createGitHubGitEnv(ghToken)
         return await executeCommand(cmd, { cwd, env: ghEnv, silent })
       }
-
-
     } catch (cliError: unknown) {
       logger.warn(`CLI auth fallback failed:`, getErrorMessage(cliError))
     }
 
     logger.warn(`All auth fallbacks failed, trying without auth (public repo)`)
-    return await executeCommand(cmd, { cwd, env: createNoPromptGitEnv(), silent })
+    try {
+      return await executeCommand(cmd, { cwd, env: createNoPromptGitEnv(), silent })
+    } catch (finalError: unknown) {
+      throw new GitAuthenticationError(`Authentication failed for Git command: ${getErrorMessage(error)}`)
+    }
   }
 }
 

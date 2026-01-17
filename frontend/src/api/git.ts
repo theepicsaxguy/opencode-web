@@ -28,8 +28,7 @@ export async function fetchGitStatus(repoId: number): Promise<GitStatusResponse>
   const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/status`)
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to fetch git status' }))
-    throw new Error(error.error || 'Failed to fetch git status')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -43,8 +42,7 @@ export async function fetchReposGitStatus(repoIds: number[]): Promise<Map<number
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to fetch batch git status' }))
-    throw new Error(error.error || 'Failed to fetch batch git status')
+    await handleApiError(response)
   }
 
   const data = await response.json()
@@ -55,8 +53,7 @@ export async function fetchFileDiff(repoId: number, path: string): Promise<FileD
   const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/diff?path=${encodeURIComponent(path)}`)
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to fetch file diff' }))
-    throw new Error(error.error || 'Failed to fetch file diff')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -67,8 +64,7 @@ export async function fetchGitLog(repoId: number, limit?: number): Promise<{ com
   const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/log${params}`)
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to fetch git log' }))
-    throw new Error(error.error || 'Failed to fetch git log')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -80,8 +76,7 @@ export async function gitFetch(repoId: number): Promise<{ stdout: string; stderr
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to fetch' }))
-    throw new Error(error.error || 'Failed to fetch')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -93,8 +88,7 @@ export async function gitPull(repoId: number): Promise<{ stdout: string; stderr:
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to pull' }))
-    throw new Error(error.error || 'Failed to pull')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -106,8 +100,7 @@ export async function gitPush(repoId: number): Promise<{ stdout: string; stderr:
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to push' }))
-    throw new Error(error.error || 'Failed to push')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -121,8 +114,7 @@ export async function gitCommit(repoId: number, message: string, stagedPaths?: s
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to commit' }))
-    throw new Error(error.error || 'Failed to commit')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -136,8 +128,7 @@ export async function gitStageFiles(repoId: number, paths: string[]): Promise<{ 
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to stage files' }))
-    throw new Error(error.error || 'Failed to stage files')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -151,8 +142,7 @@ export async function gitUnstageFiles(repoId: number, paths: string[]): Promise<
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Failed to unstage files' }))
-    throw new Error(error.error || 'Failed to unstage files')
+    await handleApiError(response)
   }
 
   return response.json()
@@ -242,6 +232,18 @@ export function useBranches(repoId: number | undefined) {
 }
 
 export function getApiErrorMessage(error: unknown): string {
+  if (error instanceof GitError) {
+    if (error.code === 'AUTH_FAILED') {
+      return 'Authentication failed. Please update your Git token in Settings.'
+    }
+    if (error.code === 'CONFLICT') {
+      return 'Merge conflict detected. Please resolve conflicts first.'
+    }
+    if (error.code === 'NOT_FOUND') {
+      return 'Repository or file not found.'
+    }
+    return error.message
+  }
   if (error instanceof Error) {
     return error.message
   }
