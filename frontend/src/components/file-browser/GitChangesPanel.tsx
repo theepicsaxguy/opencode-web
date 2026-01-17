@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
-import { useGitStatus, useGitLog } from '@/api/git'
+import { useGitStatus, useGitLog, GitError } from '@/api/git'
 import { useGitMutations } from '@/hooks/useGitMutations'
 import { showToast } from '@/lib/toast'
-import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, RefreshCw, Download, Upload, Check, Plus, X } from 'lucide-react'
+import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, RefreshCw, Download, Upload, Check, Plus, X, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GitFileStatus, GitFileStatusType } from '@/types/git'
 
@@ -265,6 +265,7 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [commitMessage, setCommitMessage] = useState('')
   const [showLog, setShowLog] = useState(false)
+  const [inlineError, setInlineError] = useState<{ message: string; type: 'auth' | 'conflict' | 'notFound' | 'general' } | null>(null)
 
   const tree = useMemo(() => {
     if (!status?.files) return []
@@ -278,6 +279,30 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
   const stagedFilesCount = status?.files.filter(f => f.staged).length || 0
 
   const canCommit = commitMessage.trim().length > 0 && stagedFilesCount > 0
+
+  const handleGitError = (error: unknown) => {
+    if (error instanceof GitError) {
+      const { code } = error
+      if (code === 'AUTH_FAILED') {
+        setInlineError({ message: error.message, type: 'auth' })
+        return true
+      }
+      if (code === 'CONFLICT') {
+        setInlineError({ message: error.message, type: 'conflict' })
+        return true
+      }
+      if (code === 'NOT_FOUND') {
+        setInlineError({ message: error.message, type: 'notFound' })
+        return true
+      }
+    }
+    setInlineError(null)
+    return false
+  }
+
+  const clearInlineError = () => {
+    setInlineError(null)
+  }
 
   const handleToggle = (path: string) => {
     setExpandedPaths(prev => {
@@ -310,43 +335,55 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
   }
 
   const handleFetch = async () => {
+    clearInlineError()
     try {
       await gitMutations.fetch.mutateAsync()
       showToast.success('Fetch completed')
     } catch (error) {
-      showToast.error(error instanceof Error ? error.message : 'Fetch failed')
+      if (!handleGitError(error)) {
+        showToast.error(error instanceof Error ? error.message : 'Fetch failed')
+      }
     }
   }
 
   const handlePull = async () => {
+    clearInlineError()
     try {
       await gitMutations.pull.mutateAsync()
       showToast.success('Pull completed')
     } catch (error) {
-      showToast.error(error instanceof Error ? error.message : 'Pull failed')
+      if (!handleGitError(error)) {
+        showToast.error(error instanceof Error ? error.message : 'Pull failed')
+      }
     }
   }
 
   const handlePush = async () => {
+    clearInlineError()
     try {
-      const setUpstream = status?.behind > 0 || !status?.hasChanges
+      const setUpstream = (status?.behind ?? 0) > 0 || !status?.hasChanges
       await gitMutations.push.mutateAsync({ setUpstream })
       showToast.success(setUpstream ? 'Branch published' : 'Push completed')
     } catch (error) {
-      showToast.error(error instanceof Error ? error.message : 'Push failed')
+      if (!handleGitError(error)) {
+        showToast.error(error instanceof Error ? error.message : 'Push failed')
+      }
     }
   }
 
   const handleCommit = async () => {
     if (!canCommit) return
 
+    clearInlineError()
     try {
       const stagedPaths = status?.files.filter(f => f.staged).map(f => f.path)
       await gitMutations.commit.mutateAsync({ message: commitMessage.trim(), stagedPaths })
       showToast.success('Commit created')
       setCommitMessage('')
     } catch (error) {
-      showToast.error(error instanceof Error ? error.message : 'Commit failed')
+      if (!handleGitError(error)) {
+        showToast.error(error instanceof Error ? error.message : 'Commit failed')
+      }
     }
   }
 
@@ -385,6 +422,24 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
 
   return (
     <div className="flex flex-col h-full">
+      {inlineError && (
+        <div className={cn(
+          'mx-3 mt-3 px-2 py-1.5 rounded text-xs flex items-start gap-1.5',
+          inlineError.type === 'auth' && 'bg-red-500/10 text-red-600 border border-red-500/20',
+          inlineError.type === 'conflict' && 'bg-orange-500/10 text-orange-600 border border-orange-500/20',
+          inlineError.type === 'notFound' && 'bg-yellow-500/10 text-yellow-600 border border-yellow-500/20',
+          inlineError.type === 'general' && 'bg-red-500/10 text-red-600 border border-red-500/20'
+        )}>
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span className="flex-1">{inlineError.message}</span>
+          <button
+            onClick={clearInlineError}
+            className="flex-shrink-0 ml-1 hover:opacity-70"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
       <div className="px-3 py-2 border-b border-border flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-foreground">{status.branch}</span>

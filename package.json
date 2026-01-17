@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.15.0",
-"scripts": {
+  "scripts": {
     "predev": "bash scripts/setup-dev.sh",
     "dev": "concurrently \"pnpm:dev:backend\" \"pnpm:dev:frontend\"",
     "dev:backend": "bun --watch backend/src/index.ts",
@@ -29,6 +29,7 @@
     "docker:restart": "docker-compose restart"
   },
   "devDependencies": {
+    "@playwright/test": "^1.57.0",
     "concurrently": "^9.1.0"
   },
   "dependencies": {

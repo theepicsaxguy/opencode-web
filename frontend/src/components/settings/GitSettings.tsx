@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useSettings } from '@/hooks/useSettings'
-import { Loader2, Plus, Trash2, Save } from 'lucide-react'
+import { Loader2, Plus, Trash2, Save, Check, X, TestTube } from 'lucide-react'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { showToast } from '@/lib/toast'
+import { GitCredentialDialog } from './GitCredentialDialog'
+import { settingsApi } from '@/api/settings'
 import type { GitCredential, GitIdentity } from '@/api/types/settings'
 
 export function GitSettings() {
@@ -14,6 +15,10 @@ export function GitSettings() {
   const [isSaving, setIsSaving] = useState(false)
   const [hasCredentialChanges, setHasCredentialChanges] = useState(false)
   const [hasIdentityChanges, setHasIdentityChanges] = useState(false)
+  const [isCredentialDialogOpen, setIsCredentialDialogOpen] = useState(false)
+  const [editingCredentialIndex, setEditingCredentialIndex] = useState<number | null>(null)
+  const [testingCredentialIndex, setTestingCredentialIndex] = useState<number | null>(null)
+  const [testResults, setTestResults] = useState<Record<number, { success: boolean; message?: string }>>({})
 
   useEffect(() => {
     if (preferences) {
@@ -38,23 +43,36 @@ export function GitSettings() {
     )
   }
 
-  const addCredential = () => {
-    const newCredentials = [...gitCredentials, { name: '', host: '', token: '', username: '' }]
-    setGitCredentials(newCredentials)
-    checkForCredentialChanges(newCredentials)
+  const openAddCredentialDialog = () => {
+    setEditingCredentialIndex(null)
+    setIsCredentialDialogOpen(true)
   }
 
-  const updateCredential = (index: number, field: keyof GitCredential, value: string) => {
-    const newCredentials = [...gitCredentials]
-    newCredentials[index] = { ...newCredentials[index], [field]: value }
+  const openEditCredentialDialog = (index: number) => {
+    setEditingCredentialIndex(index)
+    setIsCredentialDialogOpen(true)
+  }
+
+  const saveCredential = async (credential: GitCredential) => {
+    let newCredentials: GitCredential[]
+    
+    if (editingCredentialIndex !== null) {
+      newCredentials = [...gitCredentials]
+      newCredentials[editingCredentialIndex] = credential
+    } else {
+      newCredentials = [...gitCredentials, credential]
+    }
+    
     setGitCredentials(newCredentials)
     checkForCredentialChanges(newCredentials)
+    clearTestResult(editingCredentialIndex ?? newCredentials.length - 1)
   }
 
   const removeCredential = (index: number) => {
     const newCredentials = gitCredentials.filter((_, i) => i !== index)
     setGitCredentials(newCredentials)
     checkForCredentialChanges(newCredentials)
+    clearTestResult(index)
   }
 
   const updateIdentity = (field: keyof GitIdentity, value: string) => {
@@ -63,13 +81,48 @@ export function GitSettings() {
     checkForIdentityChanges(newIdentity)
   }
 
+  const testCredential = async (index: number) => {
+    const credential = gitCredentials[index]
+    if (!credential) return
+
+    setTestingCredentialIndex(index)
+    try {
+      const result = await settingsApi.testGitCredential(credential)
+      setTestResults(prev => ({ 
+        ...prev, 
+        [index]: { 
+          success: result.success, 
+          message: result.error 
+        } 
+      }))
+      
+      if (result.success) {
+        showToast.success(`Successfully connected to ${credential.host}`)
+      } else {
+        showToast.error(`Connection failed: ${result.error || 'Unknown error'}`)
+      }
+    } catch {
+      const errorMsg = 'Failed to test credential'
+      setTestResults(prev => ({ ...prev, [index]: { success: false, message: errorMsg } }))
+      showToast.error(errorMsg)
+    } finally {
+      setTestingCredentialIndex(null)
+    }
+  }
+
+  const clearTestResult = (index: number) => {
+    setTestResults(prev => {
+      const newResults = { ...prev }
+      delete newResults[index]
+      return newResults
+    })
+  }
+
   const saveCredentials = async () => {
-    const validCredentials = gitCredentials.filter(cred => cred.name && cred.host && cred.token)
-    
     setIsSaving(true)
     try {
       showToast.loading('Saving credentials and restarting server...', { id: 'git-credentials' })
-      await updateSettingsAsync({ gitCredentials: validCredentials })
+      await updateSettingsAsync({ gitCredentials })
       setHasCredentialChanges(false)
       showToast.success('Git credentials updated', { id: 'git-credentials' })
     } catch {
@@ -91,6 +144,12 @@ export function GitSettings() {
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const maskToken = (token: string) => {
+    if (!token) return ''
+    if (token.length <= 8) return '•'.repeat(token.length)
+    return token.slice(0, 8) + '...'
   }
 
   if (isLoading) {
@@ -184,7 +243,7 @@ export function GitSettings() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={addCredential}
+              onClick={openAddCredentialDialog}
               disabled={isSaving}
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -203,59 +262,73 @@ export function GitSettings() {
           <div className="space-y-4">
             {gitCredentials.map((cred, index) => (
               <div key={index} className="rounded-lg border border-border p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <Input
-                    placeholder="Credential name (e.g., GitHub Personal, Work GitLab)"
-                    value={cred.name}
-                    onChange={(e) => updateCredential(index, 'name', e.target.value)}
-                    disabled={isSaving}
-                    className="bg-background border-border text-foreground placeholder:text-muted-foreground font-medium"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeCredential(index)}
-                    disabled={isSaving}
-                    className="ml-2 text-destructive hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Host URL</Label>
-                    <Input
-                      placeholder="https://github.com/"
-                      value={cred.host}
-                      onChange={(e) => updateCredential(index, 'host', e.target.value)}
-                      disabled={isSaving}
-                      className="bg-background border-border text-foreground placeholder:text-muted-foreground"
-                    />
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-foreground mb-1">{cred.name || 'Unnamed Credential'}</h3>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>Host:</span>
+                        <span className="text-foreground">{cred.host || 'Not configured'}</span>
+                      </div>
+                      {cred.username && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <span>Username:</span>
+                          <span className="text-foreground">{cred.username}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <span>Token:</span>
+                        <span className="font-mono text-foreground">{maskToken(cred.token)}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Username (optional)</Label>
-                    <Input
-                      placeholder="Auto-detected if empty"
-                      value={cred.username || ''}
-                      onChange={(e) => updateCredential(index, 'username', e.target.value)}
+                  
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {testResults[index] && (
+                      <div className={`flex items-center gap-1 text-xs ${testResults[index].success ? 'text-green-500' : 'text-red-500'}`}>
+                        {testResults[index].success ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+                        <span>{testResults[index].success ? 'Connected' : testResults[index].message || 'Failed'}</span>
+                      </div>
+                    )}
+                    
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => testCredential(index)}
+                      disabled={testingCredentialIndex === index}
+                      title="Test Connection"
+                    >
+                      {testingCredentialIndex === index ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <TestTube className="h-4 w-4" />
+                      )}
+                    </Button>
+                    
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditCredentialDialog(index)}
                       disabled={isSaving}
-                      className="bg-background border-border text-foreground placeholder:text-muted-foreground"
-                    />
+                      title="Edit"
+                    >
+                      <Save className="h-4 w-4" />
+                    </Button>
+                    
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeCredential(index)}
+                      disabled={isSaving}
+                      className="text-destructive hover:text-destructive"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                </div>
-                
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Access Token</Label>
-                  <Input
-                    type="password"
-                    placeholder="Personal access token"
-                    value={cred.token}
-                    onChange={(e) => updateCredential(index, 'token', e.target.value)}
-                    disabled={isSaving}
-                    className="bg-background border-border text-foreground placeholder:text-muted-foreground"
-                  />
                 </div>
               </div>
             ))}
@@ -273,6 +346,14 @@ export function GitSettings() {
           </div>
         )}
       </div>
+
+      <GitCredentialDialog
+        open={isCredentialDialogOpen}
+        onOpenChange={setIsCredentialDialogOpen}
+        onSave={saveCredential}
+        credential={editingCredentialIndex !== null ? gitCredentials[editingCredentialIndex] : undefined}
+        isSaving={isSaving}
+      />
     </div>
   )
 }

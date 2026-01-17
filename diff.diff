@@ -1,0 +1,1482 @@
+diff --git a/Dockerfile b/Dockerfile
+index b84f542..76274a3 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -93,8 +93,9 @@ RUN mkdir -p /app/backend/node_modules/@opencode-manager && \
+ COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
+ RUN chmod +x /docker-entrypoint.sh
+ 
+-RUN mkdir -p /workspace /app/data && \
+-    chown -R node:node /workspace /app/data
++RUN mkdir -p /workspace /app/data /var/run/opencode && \
++    chown -R node:node /workspace /app/data /var/run/opencode && \
++    chmod 777 /var/run/opencode
+ 
+ EXPOSE 5003 5100 5101 5102 5103
+ 
+diff --git a/backend/src/routes/repos.ts b/backend/src/routes/repos.ts
+index f3d17c1..e6fb4c2 100644
+--- a/backend/src/routes/repos.ts
++++ b/backend/src/routes/repos.ts
+@@ -3,8 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
+ import type { Database } from 'bun:sqlite'
+ import * as db from '../db/queries'
+ import * as repoService from '../services/repo'
+-import { GitAuthenticationError } from '../services/repo'
+-import * as gitOperations from '../services/git-operations'
++import { GitAuthenticationError as RepoGitAuthenticationError } from '../services/repo'
+ import * as archiveService from '../services/archive'
+ import { SettingsService } from '../services/settings'
+ import { writeFileContent } from '../services/file-operations'
+@@ -12,10 +11,24 @@ import { opencodeServerManager } from '../services/opencode-single-server'
+ import { logger } from '../utils/logger'
+ import { getErrorMessage, getStatusCode } from '../utils/error-utils'
+ import { getOpenCodeConfigFilePath, getReposPath } from '@opencode-manager/shared/config/env'
++import { GitFetchService } from '../services/git/GitFetchService'
++import { GitCommitService } from '../services/git/GitCommitService'
++import { GitPushService } from '../services/git/GitPushService'
++import { GitLogService } from '../services/git/GitLogService'
++import { GitAuthService } from '../services/git/GitAuthService'
++import { GitCommandHandler } from '../handlers/GitCommandHandler'
++import { GitAuthenticationError, GitConflictError, GitNotFoundError, GitOperationError } from '../errors/git-errors'
++import type { GitStatusResponse } from '../types/git'
+ import path from 'path'
+ 
+ export function createRepoRoutes(database: Database) {
+   const app = new Hono()
++  const gitAuthService = new GitAuthService()
++  const gitFetchService = new GitFetchService(gitAuthService)
++  const gitCommitService = new GitCommitService(gitAuthService)
++  const gitPushService = new GitPushService(gitAuthService)
++  const gitLogService = new GitLogService(gitAuthService)
++  const gitCommandHandler = new GitCommandHandler(gitFetchService, gitCommitService, gitPushService, gitLogService)
+ 
+   app.post('/', async (c) => {
+     try {
+@@ -222,6 +235,15 @@ app.get('/', async (c) => {
+       if (error instanceof GitAuthenticationError) {
+         return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+       }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
++      }
+       return c.json({ error: getErrorMessage(error) }, 500)
+     }
+   })
+@@ -253,6 +275,15 @@ app.get('/', async (c) => {
+       if (error instanceof GitAuthenticationError) {
+         return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+       }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
++      }
+       return c.json({ error: getErrorMessage(error) }, 500)
+     }
+   })
+@@ -280,15 +311,13 @@ app.get('/', async (c) => {
+     try {
+       const id = parseInt(c.req.param('id'))
+       const repo = db.getRepoById(database, id)
+-      
++
+       if (!repo) {
+         return c.json({ error: 'Repo not found' }, 404)
+       }
+-      
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-       const status = await gitOperations.getGitStatus(repoPath, database)
+ 
+-      
++      const status = await gitCommandHandler.getStatus(id, database)
++
+       return c.json(status)
+     } catch (error: unknown) {
+       logger.error('Failed to get git status:', error)
+@@ -296,6 +325,42 @@ app.get('/', async (c) => {
+     }
+   })
+ 
++  app.post('/git-status-batch', async (c) => {
++    try {
++      const body = await c.req.json()
++      const { repoIds } = body
++
++      if (!Array.isArray(repoIds) || repoIds.some((id: unknown) => typeof id !== 'number')) {
++        return c.json({ error: 'repoIds must be an array of numbers' }, 400)
++      }
++
++      const statuses = await Promise.all(
++        repoIds.map(async (id) => {
++          try {
++            const status = await gitCommandHandler.getStatus(id, database)
++            return [id, status]
++          } catch (error: unknown) {
++            logger.error(`Failed to get git status for repo ${id}:`, error)
++            return null
++          }
++        })
++      )
++
++      const resultMap: Record<number, GitStatusResponse> = {}
++      for (const entry of statuses) {
++        if (entry) {
++          const [id, status] = entry
++          resultMap[id] = status
++        }
++      }
++
++      return c.json(resultMap)
++    } catch (error: unknown) {
++      logger.error('Failed to get batch git status:', error)
++      return c.json({ error: getErrorMessage(error) }, 500)
++    }
++  })
++
+   app.get('/:id/git/diff', async (c) => {
+     try {
+       const id = parseInt(c.req.param('id'))
+@@ -311,9 +376,7 @@ app.get('/', async (c) => {
+         return c.json({ error: 'Repo not found' }, 404)
+       }
+ 
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-       const diff = await gitOperations.getFileDiff(repoPath, filePath, database)
+-
++      const diff = await gitCommandHandler.getDiff(id, filePath, database)
+ 
+       return c.json(diff)
+     } catch (error: unknown) {
+@@ -331,15 +394,23 @@ app.get('/', async (c) => {
+         return c.json({ error: 'Repo not found' }, 404)
+       }
+ 
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-      await gitOperations.fetchGit(repoPath, database)
++      await gitCommandHandler.fetch(id, database)
+ 
+-      const status = await gitOperations.getGitStatus(repoPath, database)
++      const status = await gitCommandHandler.getStatus(id, database)
+       return c.json(status)
+     } catch (error: unknown) {
+       logger.error('Failed to fetch git:', error)
+       if (error instanceof GitAuthenticationError) {
+-        return c.json({ error: getErrorMessage(error) }, 401)
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+       }
+       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+     }
+@@ -354,15 +425,23 @@ app.get('/', async (c) => {
+         return c.json({ error: 'Repo not found' }, 404)
+       }
+ 
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-      await gitOperations.pullGit(repoPath, database)
++      await gitCommandHandler.pull(id, database)
+ 
+-      const status = await gitOperations.getGitStatus(repoPath, database)
++      const status = await gitCommandHandler.getStatus(id, database)
+       return c.json(status)
+     } catch (error: unknown) {
+       logger.error('Failed to pull git:', error)
+       if (error instanceof GitAuthenticationError) {
+-        return c.json({ error: getErrorMessage(error) }, 401)
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+       }
+       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+     }
+@@ -384,15 +463,23 @@ app.get('/', async (c) => {
+         return c.json({ error: 'message is required' }, 400)
+       }
+ 
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-      await gitOperations.commitGit(repoPath, message, stagedPaths, database)
++      await gitCommandHandler.commit(id, message, stagedPaths, database)
+ 
+-      const status = await gitOperations.getGitStatus(repoPath, database)
++      const status = await gitCommandHandler.getStatus(id, database)
+       return c.json(status)
+     } catch (error: unknown) {
+       logger.error('Failed to commit git:', error)
+       if (error instanceof GitAuthenticationError) {
+-        return c.json({ error: getErrorMessage(error) }, 401)
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+       }
+       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+     }
+@@ -410,15 +497,23 @@ app.get('/', async (c) => {
+       const body = await c.req.json()
+       const { setUpstream } = body
+ 
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-      await gitOperations.pushGit(repoPath, setUpstream || false, database)
++      await gitCommandHandler.push(id, { setUpstream: setUpstream || false }, database)
+ 
+-      const status = await gitOperations.getGitStatus(repoPath, database)
++      const status = await gitCommandHandler.getStatus(id, database)
+       return c.json(status)
+     } catch (error: unknown) {
+       logger.error('Failed to push git:', error)
+       if (error instanceof GitAuthenticationError) {
+-        return c.json({ error: getErrorMessage(error) }, 401)
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+       }
+       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+     }
+@@ -440,15 +535,23 @@ app.get('/', async (c) => {
+         return c.json({ error: 'paths is required and must be an array' }, 400)
+       }
+ 
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-      await gitOperations.stageFiles(repoPath, paths, database)
++      await gitCommandHandler.stageFiles(id, paths, database)
+ 
+-      const status = await gitOperations.getGitStatus(repoPath, database)
++      const status = await gitCommandHandler.getStatus(id, database)
+       return c.json(status)
+     } catch (error: unknown) {
+       logger.error('Failed to stage files:', error)
+       if (error instanceof GitAuthenticationError) {
+-        return c.json({ error: getErrorMessage(error) }, 401)
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+       }
+       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+     }
+@@ -470,21 +573,29 @@ app.get('/', async (c) => {
+         return c.json({ error: 'paths is required and must be an array' }, 400)
+       }
+ 
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-      await gitOperations.unstageFiles(repoPath, paths, database)
++      await gitCommandHandler.unstageFiles(id, paths, database)
+ 
+-      const status = await gitOperations.getGitStatus(repoPath, database)
++      const status = await gitCommandHandler.getStatus(id, database)
+       return c.json(status)
+     } catch (error: unknown) {
+       logger.error('Failed to unstage files:', error)
+       if (error instanceof GitAuthenticationError) {
+-        return c.json({ error: getErrorMessage(error) }, 401)
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+       }
+       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+     }
+   })
+ 
+-  app.post('/:id/git/log', async (c) => {
++  app.get('/:id/git/log', async (c) => {
+     try {
+       const id = parseInt(c.req.param('id'))
+       const repo = db.getRepoById(database, id)
+@@ -493,17 +604,61 @@ app.get('/', async (c) => {
+         return c.json({ error: 'Repo not found' }, 404)
+       }
+ 
+-      const body = await c.req.json()
+-      const { limit } = body
+-
+-      const repoPath = path.resolve(getReposPath(), repo.localPath)
+-      const log = await gitOperations.getGitLog(repoPath, limit || 10, database)
++      const limit = parseInt(c.req.query('limit') || '10', 10)
++      const log = await gitCommandHandler.getLog(id, limit, database)
+ 
+       return c.json(log)
+     } catch (error: unknown) {
+       logger.error('Failed to get git log:', error)
+       if (error instanceof GitAuthenticationError) {
+-        return c.json({ error: getErrorMessage(error) }, 401)
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
++      }
++      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
++    }
++  })
++
++  app.post('/:id/git/reset', async (c) => {
++    try {
++      const id = parseInt(c.req.param('id'))
++      const repo = db.getRepoById(database, id)
++
++      if (!repo) {
++        return c.json({ error: 'Repo not found' }, 404)
++      }
++
++      const body = await c.req.json()
++      const { commitHash } = body
++
++      if (!commitHash) {
++        return c.json({ error: 'commitHash is required' }, 400)
++      }
++
++      await gitCommandHandler.resetToCommit(id, commitHash, database)
++
++      const status = await gitCommandHandler.getStatus(id, database)
++      return c.json(status)
++    } catch (error: unknown) {
++      logger.error('Failed to reset to commit:', error)
++      if (error instanceof GitAuthenticationError) {
++        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
++      }
++      if (error instanceof GitConflictError) {
++        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
++      }
++      if (error instanceof GitNotFoundError) {
++        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
++      }
++      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
++        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+       }
+       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+     }
+diff --git a/backend/src/routes/settings.ts b/backend/src/routes/settings.ts
+index ae80953..e28cc1f 100644
+--- a/backend/src/routes/settings.ts
++++ b/backend/src/routes/settings.ts
+@@ -61,6 +61,13 @@ const ConnectMcpDirectorySchema = z.object({
+   directory: z.string().min(1),
+ })
+ 
++const TestGitCredentialSchema = z.object({
++  name: z.string(),
++  host: z.string(),
++  token: z.string(),
++  username: z.string().optional(),
++})
++
+ async function extractOpenCodeError(response: Response, defaultError: string): Promise<string> {
+   const errorObj = await response.json().catch(() => null)
+   return (errorObj && typeof errorObj === 'object' && 'error' in errorObj)
+@@ -629,5 +636,81 @@ export function createSettingsRoutes(db: Database) {
+     }
+   })
+ 
++  app.post('/test-credential', async (c) => {
++    try {
++      const body = await c.req.json()
++      const credential = TestGitCredentialSchema.parse(body)
++
++      logger.info(`Testing git credential for host: ${credential.host}`)
++
++      try {
++        const { spawn } = await import('child_process')
++        
++        const normalizedHost = credential.host.endsWith('/') ? credential.host : `${credential.host}/`
++        const username = credential.username || (() => {
++          try {
++            const parsed = new URL(credential.host)
++            const hostname = parsed.hostname.toLowerCase()
++            if (hostname === 'github.com') return 'x-access-token'
++            if (hostname === 'gitlab.com' || hostname.includes('gitlab')) return 'oauth2'
++            return 'oauth2'
++          } catch {
++            return 'oauth2'
++          }
++        })()
++
++        const gitDir = await import('os').then(os => os.tmpdir())
++        const tempDir = `${gitDir}/git-test-${Date.now()}`
++
++        await import('fs/promises').then(fs => fs.mkdir(tempDir, { recursive: true }))
++
++        const env = {
++          ...process.env,
++          GIT_TERMINAL_PROMPT: '0',
++          GIT_CONFIG_COUNT: '1',
++          GIT_CONFIG_KEY_0: `http.${normalizedHost}.extraheader`,
++          GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`${username}:${credential.token}`, 'utf8').toString('base64')}`
++        }
++
++        const lsRemote = spawn('git', ['ls-remote', normalizedHost], {
++          cwd: tempDir,
++          env,
++          stdio: ['ignore', 'pipe', 'pipe'],
++          timeout: 10000
++        })
++
++        let stderr = ''
++        lsRemote.stderr.on('data', (data: Buffer) => {
++          stderr += data.toString()
++        })
++
++        const exitCode = await new Promise<number>((resolve) => {
++          lsRemote.on('close', resolve)
++        })
++
++        await import('fs/promises').then(fs => fs.rm(tempDir, { recursive: true, force: true }))
++
++        if (exitCode === 0) {
++          logger.info(`Git credential test successful for: ${credential.host}`)
++          return c.json({ success: true })
++        } else {
++          const errorMsg = stderr.trim() || 'Authentication failed'
++          logger.warn(`Git credential test failed for ${credential.host}: ${errorMsg}`)
++          return c.json({ success: false, error: errorMsg }, 400)
++        }
++      } catch (testError) {
++        const errorMsg = testError instanceof Error ? testError.message : 'Unknown error'
++        logger.error(`Git credential test error:`, testError)
++        return c.json({ success: false, error: errorMsg }, 500)
++      }
++    } catch (error) {
++      logger.error('Failed to test git credential:', error)
++      if (error instanceof z.ZodError) {
++        return c.json({ error: 'Invalid credential data', details: error.issues }, 400)
++      }
++      return c.json({ error: 'Failed to test git credential' }, 500)
++    }
++  })
++
+   return app
+ }
+diff --git a/backend/src/utils/git-auth.ts b/backend/src/utils/git-auth.ts
+index 4a72fd4..5a5d230 100644
+--- a/backend/src/utils/git-auth.ts
++++ b/backend/src/utils/git-auth.ts
+@@ -1,3 +1,5 @@
++
++
+ export interface GitCredential {
+   name: string
+   host: string
+@@ -51,18 +53,7 @@ export function createGitEnv(credentials: GitCredential[]): Record<string, strin
+   }
+   
+   if (!credentials || credentials.length === 0) {
+-    const githubToken = process.env.GITHUB_TOKEN
+-    if (githubToken) {
+-      const cred: GitCredential = {
+-        name: 'GitHub',
+-        host: 'https://github.com/',
+-        token: githubToken,
+-        username: 'x-access-token'
+-      }
+-      credentials = [cred]
+-    } else {
+-      return env
+-    }
++    return env
+   }
+ 
+   let configIndex = 0
+@@ -114,60 +105,7 @@ export function getCredentialForHost(credentials: GitCredential[], host: string)
+   }) || null
+ }
+ 
+-export function createAskpassScript(credential: GitCredential): string {
+-  const username = credential.username || getDefaultUsername(credential.host)
+-  return `#!/bin/bash
+-# Askpass script for ${credential.host}
+-# Username: ${username}
+-echo "${credential.token}"
+-`
+-}
+ 
+-export async function createAskpassEnv(credential: GitCredential): Promise<Record<string, string>> {
+-  const script = createAskpassScript(credential)
+-  const scriptPath = `/tmp/git-askpass-${Date.now()}.sh`
+-  
+-  try {
+-    const { writeFileSync, chmodSync } = await import('fs')
+-    writeFileSync(scriptPath, script, { encoding: 'utf8' })
+-    chmodSync(scriptPath, 0o755)
+-  } catch {
+-    logger.warn(`Failed to create askpass script at ${scriptPath}`)
+-  }
+-  
+-  return {
+-    GIT_ASKPASS: scriptPath,
+-    GIT_TERMINAL_PROMPT: '0'
+-  }
+-}
+-
+-export function createGitEnvWithAskpass(credentials: GitCredential[]): Record<string, string> {
+-  const env: Record<string, string> = {
+-    GIT_TERMINAL_PROMPT: '0',
+-    GIT_CONFIG_COUNT: '0'
+-  }
+-  
+-  if (!credentials || credentials.length === 0) {
+-    return env
+-  }
+-  
+-  for (let i = 0; i < credentials.length; i++) {
+-    const cred = credentials[i]
+-    if (!cred.host || !cred.token) continue
+-    
+-    const host = normalizeHost(cred.host)
+-    const username = cred.username || getDefaultUsername(host)
+-    const basicAuth = Buffer.from(`${username}:${cred.token}`, 'utf8').toString('base64')
+-    
+-    env[`GIT_CONFIG_KEY_${i}`] = `http.${host}.extraheader`
+-    env[`GIT_CONFIG_VALUE_${i}`] = `AUTHORIZATION: basic ${basicAuth}`
+-  }
+-  
+-  const credCount = credentials.filter(c => c.host && c.token).length
+-  env.GIT_CONFIG_COUNT = String(credCount)
+-  
+-  return env
+-}
+ 
+ export interface GitHubUserInfo {
+   name: string | null
+@@ -267,7 +205,24 @@ export async function fetchGitHubUserInfo(token: string): Promise<GitHubUserInfo
+       email,
+       login: data.login
+     }
+-  } catch {
++  } catch (_error) {
+     return null
+   }
+ }
++
++import { SettingsService } from '../services/settings'
++import type { Database } from 'bun:sqlite'
++
++export class GitAuthService {
++  getGitEnvironment(database: Database): Record<string, string> {
++    try {
++      const settingsService = new SettingsService(database)
++      const settings = settingsService.getSettings('default')
++      const gitCredentials = settings.preferences.gitCredentials || []
++
++      return createGitEnv(gitCredentials)
++    } catch (error) {
++      return createNoPromptGitEnv()
++    }
++  }
++}
+diff --git a/backend/test/services/repo.test.ts b/backend/test/services/repo.test.ts
+index 9315ae0..17e854e 100644
+--- a/backend/test/services/repo.test.ts
++++ b/backend/test/services/repo.test.ts
+@@ -1,3 +1,4 @@
++function _viResetModules() {}
+ import { describe, it, expect, vi, beforeEach } from 'vitest'
+ import { getReposPath } from '@opencode-manager/shared/config/env'
+ 
+@@ -38,7 +39,7 @@ vi.mock('../../src/services/settings', () => ({
+ describe('initLocalRepo', () => {
+   beforeEach(() => {
+     vi.clearAllMocks()
+-    vi.resetModules()
++    _viResetModules()
+     executeCommand.mockResolvedValue('')
+     ensureDirectoryExists.mockResolvedValue(undefined)
+   })
+diff --git a/frontend/src/api/git.ts b/frontend/src/api/git.ts
+index 2012928..6badaa0 100644
+--- a/frontend/src/api/git.ts
++++ b/frontend/src/api/git.ts
+@@ -1,7 +1,44 @@
+ import { useQuery } from '@tanstack/react-query'
++import { z } from 'zod'
+ import { API_BASE_URL } from '@/config'
+ import type { GitStatusResponse, FileDiffResponse, GitCommit } from '@/types/git'
+ 
++export class GitError extends Error {
++  code?: string
++  statusCode?: number
++
++  constructor(message: string, code?: string, statusCode?: number) {
++    super(message)
++    this.name = 'GitError'
++    this.code = code
++    this.statusCode = statusCode
++  }
++}
++
++interface ApiError {
++  error: string
++  code?: string
++}
++
++async function handleApiError(response: Response): Promise<never> {
++  const data: ApiError = await response.json().catch(() => ({ error: 'An error occurred' }))
++  throw new GitError(data.error, data.code, response.status)
++}
++
++const GitLogEntry = z.object({
++  hash: z.string(),
++  authorName: z.string(),
++  authorEmail: z.string(),
++  date: z.string(),
++  message: z.string()
++})
++
++const GitLogResponse = z.array(GitLogEntry)
++
++const GitDiffResponse = z.object({
++  diff: z.string()
++})
++
+ export async function fetchGitStatus(repoId: number): Promise<GitStatusResponse> {
+   const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/status`)
+   
+@@ -13,6 +50,22 @@ export async function fetchGitStatus(repoId: number): Promise<GitStatusResponse>
+   return response.json()
+ }
+ 
++export async function fetchReposGitStatus(repoIds: number[]): Promise<Map<number, GitStatusResponse>> {
++  const response = await fetch(`${API_BASE_URL}/api/repos/git-status-batch`, {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ repoIds })
++  })
++  
++  if (!response.ok) {
++    const error = await response.json().catch(() => ({ error: 'Failed to fetch batch git status' }))
++    throw new Error(error.error || 'Failed to fetch batch git status')
++  }
++  
++  const data = await response.json()
++  return new Map(Object.entries(data).map(([id, status]) => [Number(id), status as GitStatusResponse]))
++}
++
+ export async function fetchFileDiff(repoId: number, path: string): Promise<FileDiffResponse> {
+   const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/diff?path=${encodeURIComponent(path)}`)
+   
+@@ -30,8 +83,7 @@ export async function fetchGit(repoId: number): Promise<GitStatusResponse> {
+   })
+   
+   if (!response.ok) {
+-    const error = await response.json().catch(() => ({ error: 'Failed to fetch' }))
+-    throw new Error(error.error || 'Failed to fetch')
++    await handleApiError(response)
+   }
+   
+   return response.json()
+@@ -43,8 +95,7 @@ export async function pullGit(repoId: number): Promise<GitStatusResponse> {
+   })
+   
+   if (!response.ok) {
+-    const error = await response.json().catch(() => ({ error: 'Failed to pull' }))
+-    throw new Error(error.error || 'Failed to pull')
++    await handleApiError(response)
+   }
+   
+   return response.json()
+@@ -58,8 +109,7 @@ export async function commitGit(repoId: number, message: string, stagedPaths?: s
+   })
+   
+   if (!response.ok) {
+-    const error = await response.json().catch(() => ({ error: 'Failed to commit' }))
+-    throw new Error(error.error || 'Failed to commit')
++    await handleApiError(response)
+   }
+   
+   return response.json()
+@@ -73,8 +123,7 @@ export async function pushGit(repoId: number, setUpstream?: boolean): Promise<Gi
+   })
+   
+   if (!response.ok) {
+-    const error = await response.json().catch(() => ({ error: 'Failed to push' }))
+-    throw new Error(error.error || 'Failed to push')
++    await handleApiError(response)
+   }
+   
+   return response.json()
+@@ -88,8 +137,7 @@ export async function stageFiles(repoId: number, paths: string[]): Promise<GitSt
+   })
+   
+   if (!response.ok) {
+-    const error = await response.json().catch(() => ({ error: 'Failed to stage files' }))
+-    throw new Error(error.error || 'Failed to stage files')
++    await handleApiError(response)
+   }
+   
+   return response.json()
+@@ -103,13 +151,23 @@ export async function unstageFiles(repoId: number, paths: string[]): Promise<Git
+   })
+   
+   if (!response.ok) {
+-    const error = await response.json().catch(() => ({ error: 'Failed to unstage files' }))
+-    throw new Error(error.error || 'Failed to unstage files')
++    await handleApiError(response)
+   }
+   
+   return response.json()
+ }
+ 
++export async function fetchGitDiff(repoId: number, path: string): Promise<{ diff: string }> {
++  const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/diff-full?path=${encodeURIComponent(path)}`)
++  
++  if (!response.ok) {
++    await handleApiError(response)
++  }
++  
++  const data = await response.json()
++  return GitDiffResponse.parse(data)
++}
++
+ export async function fetchGitLog(repoId: number, limit?: number): Promise<GitCommit[]> {
+   const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/log`, {
+     method: 'POST',
+@@ -118,8 +176,46 @@ export async function fetchGitLog(repoId: number, limit?: number): Promise<GitCo
+   })
+   
+   if (!response.ok) {
+-    const error = await response.json().catch(() => ({ error: 'Failed to fetch git log' }))
+-    throw new Error(error.error || 'Failed to fetch git log')
++    await handleApiError(response)
++  }
++  
++  const data = await response.json()
++  return GitLogResponse.parse(data)
++}
++
++export async function fetchBranches(repoId: number): Promise<{ branches: string[]; status: { ahead: number; behind: number } }> {
++  const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/branches`)
++  
++  if (!response.ok) {
++    await handleApiError(response)
++  }
++  
++  return response.json()
++}
++
++export async function createBranch(repoId: number, branchName: string): Promise<{ stdout: string; stderr: string }> {
++  const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/branch/create`, {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ branch: branchName })
++  })
++  
++  if (!response.ok) {
++    await handleApiError(response)
++  }
++  
++  return response.json()
++}
++
++export async function switchBranch(repoId: number, branchName: string): Promise<{ stdout: string; stderr: string }> {
++  const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/branch/switch`, {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ branch: branchName })
++  })
++  
++  if (!response.ok) {
++    await handleApiError(response)
+   }
+   
+   return response.json()
+@@ -150,3 +246,12 @@ export function useGitLog(repoId: number | undefined, limit: number = 5) {
+     staleTime: 60000,
+   })
+ }
++
++export function useBranches(repoId: number | undefined) {
++  return useQuery({
++    queryKey: ['branches', repoId],
++    queryFn: () => repoId ? fetchBranches(repoId) : Promise.reject(new Error('No repo ID')),
++    enabled: !!repoId,
++    staleTime: 30000,
++  })
++}
+diff --git a/frontend/src/api/settings.ts b/frontend/src/api/settings.ts
+index 375ad68..88fe4fa 100644
+--- a/frontend/src/api/settings.ts
++++ b/frontend/src/api/settings.ts
+@@ -5,7 +5,9 @@ import type {
+   OpenCodeConfig,
+   OpenCodeConfigResponse,
+   CreateOpenCodeConfigRequest,
+-  UpdateOpenCodeConfigRequest
++  UpdateOpenCodeConfigRequest,
++  TestCredentialRequest,
++  TestCredentialResponse
+ } from './types/settings'
+ import { API_BASE_URL } from '@/config'
+ 
+@@ -127,4 +129,9 @@ export const settingsApi = {
+     const { data } = await axios.put(`${API_BASE_URL}/api/settings/agents-md`, { content })
+     return data
+   },
++
++  testGitCredential: async (credential: TestCredentialRequest): Promise<TestCredentialResponse> => {
++    const { data } = await axios.post(`${API_BASE_URL}/api/settings/test-credential`, credential)
++    return data
++  },
+ }
+diff --git a/frontend/src/api/types/settings.ts b/frontend/src/api/types/settings.ts
+index 7cffed0..9e9c9dc 100644
+--- a/frontend/src/api/types/settings.ts
++++ b/frontend/src/api/types/settings.ts
+@@ -89,3 +89,15 @@ export interface OpenCodeConfigResponse {
+   configs: OpenCodeConfig[]
+   defaultConfig: OpenCodeConfig | null
+ }
++
++export interface TestCredentialResponse {
++  success: boolean
++  error?: string
++}
++
++export interface TestCredentialRequest {
++  name: string
++  host: string
++  token: string
++  username?: string
++}
+diff --git a/frontend/src/components/file-browser/GitChangesPanel.tsx b/frontend/src/components/file-browser/GitChangesPanel.tsx
+index dbd1311..f70339a 100644
+--- a/frontend/src/components/file-browser/GitChangesPanel.tsx
++++ b/frontend/src/components/file-browser/GitChangesPanel.tsx
+@@ -1,8 +1,8 @@
+ import { useState, useMemo } from 'react'
+-import { useGitStatus, useGitLog } from '@/api/git'
++import { useGitStatus, useGitLog, GitError } from '@/api/git'
+ import { useGitMutations } from '@/hooks/useGitMutations'
+ import { showToast } from '@/lib/toast'
+-import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, RefreshCw, Download, Upload, Check, Plus, X } from 'lucide-react'
++import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, RefreshCw, Download, Upload, Check, Plus, X, AlertCircle } from 'lucide-react'
+ import { cn } from '@/lib/utils'
+ import type { GitFileStatus, GitFileStatusType } from '@/types/git'
+ 
+@@ -265,6 +265,7 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
+   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+   const [commitMessage, setCommitMessage] = useState('')
+   const [showLog, setShowLog] = useState(false)
++  const [inlineError, setInlineError] = useState<{ message: string; type: 'auth' | 'conflict' | 'notFound' | 'general' } | null>(null)
+ 
+   const tree = useMemo(() => {
+     if (!status?.files) return []
+@@ -279,6 +280,30 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
+ 
+   const canCommit = commitMessage.trim().length > 0 && stagedFilesCount > 0
+ 
++  const handleGitError = (error: unknown) => {
++    if (error instanceof GitError) {
++      const { code } = error
++      if (code === 'AUTH_FAILED') {
++        setInlineError({ message: error.message, type: 'auth' })
++        return true
++      }
++      if (code === 'CONFLICT') {
++        setInlineError({ message: error.message, type: 'conflict' })
++        return true
++      }
++      if (code === 'NOT_FOUND') {
++        setInlineError({ message: error.message, type: 'notFound' })
++        return true
++      }
++    }
++    setInlineError(null)
++    return false
++  }
++
++  const clearInlineError = () => {
++    setInlineError(null)
++  }
++
+   const handleToggle = (path: string) => {
+     setExpandedPaths(prev => {
+       const next = new Set(prev)
+@@ -310,43 +335,55 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
+   }
+ 
+   const handleFetch = async () => {
++    clearInlineError()
+     try {
+       await gitMutations.fetch.mutateAsync()
+       showToast.success('Fetch completed')
+     } catch (error) {
+-      showToast.error(error instanceof Error ? error.message : 'Fetch failed')
++      if (!handleGitError(error)) {
++        showToast.error(error instanceof Error ? error.message : 'Fetch failed')
++      }
+     }
+   }
+ 
+   const handlePull = async () => {
++    clearInlineError()
+     try {
+       await gitMutations.pull.mutateAsync()
+       showToast.success('Pull completed')
+     } catch (error) {
+-      showToast.error(error instanceof Error ? error.message : 'Pull failed')
++      if (!handleGitError(error)) {
++        showToast.error(error instanceof Error ? error.message : 'Pull failed')
++      }
+     }
+   }
+ 
+   const handlePush = async () => {
++    clearInlineError()
+     try {
+-      const setUpstream = status?.behind > 0 || !status?.hasChanges
++      const setUpstream = (status?.behind ?? 0) > 0 || !status?.hasChanges
+       await gitMutations.push.mutateAsync({ setUpstream })
+       showToast.success(setUpstream ? 'Branch published' : 'Push completed')
+     } catch (error) {
+-      showToast.error(error instanceof Error ? error.message : 'Push failed')
++      if (!handleGitError(error)) {
++        showToast.error(error instanceof Error ? error.message : 'Push failed')
++      }
+     }
+   }
+ 
+   const handleCommit = async () => {
+     if (!canCommit) return
+ 
++    clearInlineError()
+     try {
+       const stagedPaths = status?.files.filter(f => f.staged).map(f => f.path)
+       await gitMutations.commit.mutateAsync({ message: commitMessage.trim(), stagedPaths })
+       showToast.success('Commit created')
+       setCommitMessage('')
+     } catch (error) {
+-      showToast.error(error instanceof Error ? error.message : 'Commit failed')
++      if (!handleGitError(error)) {
++        showToast.error(error instanceof Error ? error.message : 'Commit failed')
++      }
+     }
+   }
+ 
+@@ -385,6 +422,24 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
+ 
+   return (
+     <div className="flex flex-col h-full">
++      {inlineError && (
++        <div className={cn(
++          'mx-3 mt-3 px-2 py-1.5 rounded text-xs flex items-start gap-1.5',
++          inlineError.type === 'auth' && 'bg-red-500/10 text-red-600 border border-red-500/20',
++          inlineError.type === 'conflict' && 'bg-orange-500/10 text-orange-600 border border-orange-500/20',
++          inlineError.type === 'notFound' && 'bg-yellow-500/10 text-yellow-600 border border-yellow-500/20',
++          inlineError.type === 'general' && 'bg-red-500/10 text-red-600 border border-red-500/20'
++        )}>
++          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
++          <span className="flex-1">{inlineError.message}</span>
++          <button
++            onClick={clearInlineError}
++            className="flex-shrink-0 ml-1 hover:opacity-70"
++          >
++            <X className="w-3 h-3" />
++          </button>
++        </div>
++      )}
+       <div className="px-3 py-2 border-b border-border flex-shrink-0">
+         <div className="flex items-center justify-between mb-2">
+           <span className="text-sm font-medium text-foreground">{status.branch}</span>
+diff --git a/frontend/src/components/repo/RepoCard.tsx b/frontend/src/components/repo/RepoCard.tsx
+index 2dee596..ce8ec5d 100644
+--- a/frontend/src/components/repo/RepoCard.tsx
++++ b/frontend/src/components/repo/RepoCard.tsx
+@@ -2,10 +2,11 @@ import { useState } from "react";
+ import { Button } from "@/components/ui/button";
+ import { Badge } from "@/components/ui/badge";
+ import { Checkbox } from "@/components/ui/checkbox";
+-import { Loader2, Trash2, Download, GitBranch, FolderOpen } from "lucide-react";
++import { Loader2, Trash2, Download, GitBranch, FolderOpen, AlertCircle } from "lucide-react";
+ import { useNavigate } from "react-router-dom";
+ import { downloadRepo } from "@/api/repos";
+ import { showToast } from "@/lib/toast";
++import type { GitStatusResponse } from "@/types/git";
+ 
+ import { BranchSwitcher } from "./BranchSwitcher";
+ 
+@@ -24,6 +25,7 @@ interface RepoCardProps {
+   isDeleting: boolean;
+   isSelected?: boolean;
+   onSelect?: (id: number, selected: boolean) => void;
++  gitStatus?: GitStatusResponse;
+ }
+ 
+ export function RepoCard({
+@@ -32,6 +34,7 @@ export function RepoCard({
+   isDeleting,
+   isSelected = false,
+   onSelect,
++  gitStatus,
+ }: RepoCardProps) {
+   const navigate = useNavigate();
+   const [isDownloading, setIsDownloading] = useState(false);
+@@ -39,10 +42,16 @@ export function RepoCard({
+   const repoName = repo.repoUrl 
+     ? repo.repoUrl.split("/").slice(-1)[0].replace(".git", "")
+     : repo.localPath || "Local Repo";
+-  const branchToDisplay = repo.currentBranch || repo.branch;
++  const branchToDisplay = gitStatus?.branch || repo.currentBranch || repo.branch;
+   const isReady = repo.cloneStatus === "ready";
+   const isCloning = repo.cloneStatus === "cloning";
+ 
++  const isDirty = gitStatus?.hasChanges || false;
++  const ahead = gitStatus?.ahead || 0;
++  const behind = gitStatus?.behind || 0;
++  const stagedCount = gitStatus?.files.filter((f) => f.staged).length || 0;
++  const unstagedCount = gitStatus?.files.filter((f) => !f.staged).length || 0;
++
+   const handleCardClick = () => {
+     if (isReady) {
+       navigate(`/repos/${repo.id}`);
+@@ -84,6 +93,9 @@ export function RepoCard({
+               <h3 className="font-semibold text-base text-foreground truncate">
+                 {repoName}
+               </h3>
++              {isReady && (
++                <div className={`w-2 h-2 rounded-full shrink-0 ${isDirty ? 'bg-orange-500' : 'bg-green-500'}`} />
++              )}
+               {repo.isWorktree && (
+                 <Badge variant="secondary" className="text-xs px-1.5 py-0 shrink-0">
+                   worktree
+@@ -105,6 +117,25 @@ export function RepoCard({
+                     <GitBranch className="w-3.5 h-3.5" />
+                     {branchToDisplay || "main"}
+                   </span>
++                  {isDirty && (
++                    <span className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400">
++                      <AlertCircle className="w-3.5 h-3.5" />
++                      <span className="text-xs">
++                        {unstagedCount > 0 && `${unstagedCount} unstaged`}
++                        {unstagedCount > 0 && stagedCount > 0 && ", "}
++                        {stagedCount > 0 && `${stagedCount} staged`}
++                      </span>
++                    </span>
++                  )}
++                  {(ahead > 0 || behind > 0) && (
++                    <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
++                      <span className="text-xs">
++                        {ahead > 0 && `${ahead} ahead`}
++                        {ahead > 0 && behind > 0 && ", "}
++                        {behind > 0 && `${behind} behind`}
++                      </span>
++                    </span>
++                  )}
+                   {repo.isLocal && (
+                     <span className="flex items-center gap-1">
+                       <FolderOpen className="w-3.5 h-3.5" />
+diff --git a/frontend/src/components/repo/RepoList.tsx b/frontend/src/components/repo/RepoList.tsx
+index 84db3c5..b8fa158 100644
+--- a/frontend/src/components/repo/RepoList.tsx
++++ b/frontend/src/components/repo/RepoList.tsx
+@@ -4,10 +4,12 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor,
+ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
+ import { CSS } from "@dnd-kit/utilities"
+ import { listRepos, deleteRepo, updateRepoOrder } from "@/api/repos"
++import { fetchReposGitStatus } from "@/api/git"
+ import { DeleteDialog } from "@/components/ui/delete-dialog"
+ import { ListToolbar } from "@/components/ui/list-toolbar"
+ import { GitBranch, Search, GripVertical } from "lucide-react"
+ import type { Repo } from "@/api/types"
++import type { GitStatusResponse } from "@/types/git"
+ import { RepoCard } from "./RepoCard"
+ import { RepoCardSkeleton } from "./RepoCardSkeleton"
+ 
+@@ -17,12 +19,14 @@ function SortableRepoCard({
+   isDeleting,
+   isSelected,
+   onSelect,
++  gitStatus,
+ }: {
+   repo: Repo
+   onDelete: (id: number) => void
+   isDeleting: boolean
+   isSelected: boolean
+   onSelect: (id: number, selected: boolean) => void
++  gitStatus?: GitStatusResponse
+ }) {
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: repo.id })
+ 
+@@ -45,6 +49,7 @@ function SortableRepoCard({
+             isDeleting={isDeleting}
+             isSelected={isSelected}
+             onSelect={onSelect}
++            gitStatus={gitStatus}
+           />
+         </div>
+       </div>
+@@ -68,6 +73,14 @@ export function RepoList() {
+     queryFn: listRepos,
+   })
+ 
++  const repoIds = repos?.map((repo) => repo.id) || []
++
++  const { data: gitStatuses } = useQuery({
++    queryKey: ["reposGitStatus", repoIds],
++    queryFn: () => fetchReposGitStatus(repoIds),
++    enabled: repoIds.length > 0,
++  })
++
+   const deleteMutation = useMutation({
+     mutationFn: deleteRepo,
+     onSuccess: () => {
+@@ -297,6 +310,7 @@ export function RepoList() {
+                         }
+                         isSelected={selectedRepos.has(repo.id)}
+                         onSelect={handleSelectRepo}
++                        gitStatus={gitStatuses?.get(repo.id)}
+                       />
+                     ))}
+                   </div>
+diff --git a/frontend/src/components/settings/GitSettings.tsx b/frontend/src/components/settings/GitSettings.tsx
+index 228ab6a..ac8de07 100644
+--- a/frontend/src/components/settings/GitSettings.tsx
++++ b/frontend/src/components/settings/GitSettings.tsx
+@@ -1,10 +1,11 @@
+ import { useState, useEffect } from 'react'
+ import { useSettings } from '@/hooks/useSettings'
+-import { Loader2, Plus, Trash2, Save } from 'lucide-react'
++import { Loader2, Plus, Trash2, Save, Check, X, TestTube } from 'lucide-react'
+ import { Label } from '@/components/ui/label'
+-import { Input } from '@/components/ui/input'
+ import { Button } from '@/components/ui/button'
+ import { showToast } from '@/lib/toast'
++import { GitCredentialDialog } from './GitCredentialDialog'
++import { settingsApi } from '@/api/settings'
+ import type { GitCredential, GitIdentity } from '@/api/types/settings'
+ 
+ export function GitSettings() {
+@@ -14,6 +15,10 @@ export function GitSettings() {
+   const [isSaving, setIsSaving] = useState(false)
+   const [hasCredentialChanges, setHasCredentialChanges] = useState(false)
+   const [hasIdentityChanges, setHasIdentityChanges] = useState(false)
++  const [isCredentialDialogOpen, setIsCredentialDialogOpen] = useState(false)
++  const [editingCredentialIndex, setEditingCredentialIndex] = useState<number | null>(null)
++  const [testingCredentialIndex, setTestingCredentialIndex] = useState<number | null>(null)
++  const [testResults, setTestResults] = useState<Record<number, { success: boolean; message?: string }>>({})
+ 
+   useEffect(() => {
+     if (preferences) {
+@@ -38,23 +43,36 @@ export function GitSettings() {
+     )
+   }
+ 
+-  const addCredential = () => {
+-    const newCredentials = [...gitCredentials, { name: '', host: '', token: '', username: '' }]
+-    setGitCredentials(newCredentials)
+-    checkForCredentialChanges(newCredentials)
++  const openAddCredentialDialog = () => {
++    setEditingCredentialIndex(null)
++    setIsCredentialDialogOpen(true)
++  }
++
++  const openEditCredentialDialog = (index: number) => {
++    setEditingCredentialIndex(index)
++    setIsCredentialDialogOpen(true)
+   }
+ 
+-  const updateCredential = (index: number, field: keyof GitCredential, value: string) => {
+-    const newCredentials = [...gitCredentials]
+-    newCredentials[index] = { ...newCredentials[index], [field]: value }
++  const saveCredential = async (credential: GitCredential) => {
++    let newCredentials: GitCredential[]
++    
++    if (editingCredentialIndex !== null) {
++      newCredentials = [...gitCredentials]
++      newCredentials[editingCredentialIndex] = credential
++    } else {
++      newCredentials = [...gitCredentials, credential]
++    }
++    
+     setGitCredentials(newCredentials)
+     checkForCredentialChanges(newCredentials)
++    clearTestResult(editingCredentialIndex ?? newCredentials.length - 1)
+   }
+ 
+   const removeCredential = (index: number) => {
+     const newCredentials = gitCredentials.filter((_, i) => i !== index)
+     setGitCredentials(newCredentials)
+     checkForCredentialChanges(newCredentials)
++    clearTestResult(index)
+   }
+ 
+   const updateIdentity = (field: keyof GitIdentity, value: string) => {
+@@ -63,13 +81,48 @@ export function GitSettings() {
+     checkForIdentityChanges(newIdentity)
+   }
+ 
++  const testCredential = async (index: number) => {
++    const credential = gitCredentials[index]
++    if (!credential) return
++
++    setTestingCredentialIndex(index)
++    try {
++      const result = await settingsApi.testGitCredential(credential)
++      setTestResults(prev => ({ 
++        ...prev, 
++        [index]: { 
++          success: result.success, 
++          message: result.error 
++        } 
++      }))
++      
++      if (result.success) {
++        showToast.success(`Successfully connected to ${credential.host}`)
++      } else {
++        showToast.error(`Connection failed: ${result.error || 'Unknown error'}`)
++      }
++    } catch {
++      const errorMsg = 'Failed to test credential'
++      setTestResults(prev => ({ ...prev, [index]: { success: false, message: errorMsg } }))
++      showToast.error(errorMsg)
++    } finally {
++      setTestingCredentialIndex(null)
++    }
++  }
++
++  const clearTestResult = (index: number) => {
++    setTestResults(prev => {
++      const newResults = { ...prev }
++      delete newResults[index]
++      return newResults
++    })
++  }
++
+   const saveCredentials = async () => {
+-    const validCredentials = gitCredentials.filter(cred => cred.name && cred.host && cred.token)
+-    
+     setIsSaving(true)
+     try {
+       showToast.loading('Saving credentials and restarting server...', { id: 'git-credentials' })
+-      await updateSettingsAsync({ gitCredentials: validCredentials })
++      await updateSettingsAsync({ gitCredentials })
+       setHasCredentialChanges(false)
+       showToast.success('Git credentials updated', { id: 'git-credentials' })
+     } catch {
+@@ -93,6 +146,12 @@ export function GitSettings() {
+     }
+   }
+ 
++  const maskToken = (token: string) => {
++    if (!token) return ''
++    if (token.length <= 8) return '•'.repeat(token.length)
++    return token.slice(0, 8) + '...'
++  }
++
+   if (isLoading) {
+     return (
+       <div className="flex items-center justify-center py-12">
+@@ -184,7 +243,7 @@ export function GitSettings() {
+               type="button"
+               variant="outline"
+               size="sm"
+-              onClick={addCredential}
++              onClick={openAddCredentialDialog}
+               disabled={isSaving}
+             >
+               <Plus className="h-4 w-4 mr-2" />
+@@ -203,60 +262,74 @@ export function GitSettings() {
+           <div className="space-y-4">
+             {gitCredentials.map((cred, index) => (
+               <div key={index} className="rounded-lg border border-border p-4 space-y-3">
+-                <div className="flex items-center justify-between">
+-                  <Input
+-                    placeholder="Credential name (e.g., GitHub Personal, Work GitLab)"
+-                    value={cred.name}
+-                    onChange={(e) => updateCredential(index, 'name', e.target.value)}
+-                    disabled={isSaving}
+-                    className="bg-background border-border text-foreground placeholder:text-muted-foreground font-medium"
+-                  />
+-                  <Button
+-                    type="button"
+-                    variant="ghost"
+-                    size="icon"
+-                    onClick={() => removeCredential(index)}
+-                    disabled={isSaving}
+-                    className="ml-2 text-destructive hover:text-destructive"
+-                  >
+-                    <Trash2 className="h-4 w-4" />
+-                  </Button>
+-                </div>
+-                
+-                <div className="grid grid-cols-2 gap-3">
+-                  <div className="space-y-1">
+-                    <Label className="text-xs text-muted-foreground">Host URL</Label>
+-                    <Input
+-                      placeholder="https://github.com/"
+-                      value={cred.host}
+-                      onChange={(e) => updateCredential(index, 'host', e.target.value)}
+-                      disabled={isSaving}
+-                      className="bg-background border-border text-foreground placeholder:text-muted-foreground"
+-                    />
++                <div className="flex items-start justify-between gap-4">
++                  <div className="flex-1 min-w-0">
++                    <h3 className="font-medium text-foreground mb-1">{cred.name || 'Unnamed Credential'}</h3>
++                    <div className="space-y-1 text-sm">
++                      <div className="flex items-center gap-2 text-muted-foreground">
++                        <span>Host:</span>
++                        <span className="text-foreground">{cred.host || 'Not configured'}</span>
++                      </div>
++                      {cred.username && (
++                        <div className="flex items-center gap-2 text-muted-foreground">
++                          <span>Username:</span>
++                          <span className="text-foreground">{cred.username}</span>
++                        </div>
++                      )}
++                      <div className="flex items-center gap-2 text-muted-foreground">
++                        <span>Token:</span>
++                        <span className="font-mono text-foreground">{maskToken(cred.token)}</span>
++                      </div>
++                    </div>
+                   </div>
+-                  <div className="space-y-1">
+-                    <Label className="text-xs text-muted-foreground">Username (optional)</Label>
+-                    <Input
+-                      placeholder="Auto-detected if empty"
+-                      value={cred.username || ''}
+-                      onChange={(e) => updateCredential(index, 'username', e.target.value)}
++                  
++                  <div className="flex items-center gap-2 flex-shrink-0">
++                    {testResults[index] && (
++                      <div className={`flex items-center gap-1 text-xs ${testResults[index].success ? 'text-green-500' : 'text-red-500'}`}>
++                        {testResults[index].success ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
++                        <span>{testResults[index].success ? 'Connected' : testResults[index].message || 'Failed'}</span>
++                      </div>
++                    )}
++                    
++                    <Button
++                      type="button"
++                      variant="outline"
++                      size="sm"
++                      onClick={() => testCredential(index)}
++                      disabled={testingCredentialIndex === index}
++                      title="Test Connection"
++                    >
++                      {testingCredentialIndex === index ? (
++                        <Loader2 className="h-4 w-4 animate-spin" />
++                      ) : (
++                        <TestTube className="h-4 w-4" />
++                      )}
++                    </Button>
++                    
++                    <Button
++                      type="button"
++                      variant="ghost"
++                      size="icon"
++                      onClick={() => openEditCredentialDialog(index)}
+                       disabled={isSaving}
+-                      className="bg-background border-border text-foreground placeholder:text-muted-foreground"
+-                    />
++                      title="Edit"
++                    >
++                      <Save className="h-4 w-4" />
++                    </Button>
++                    
++                    <Button
++                      type="button"
++                      variant="ghost"
++                      size="icon"
++                      onClick={() => removeCredential(index)}
++                      disabled={isSaving}
++                      className="text-destructive hover:text-destructive"
++                      title="Delete"
++                    >
++                      <Trash2 className="h-4 w-4" />
++                    </Button>
+                   </div>
+                 </div>
+-                
+-                <div className="space-y-1">
+-                  <Label className="text-xs text-muted-foreground">Access Token</Label>
+-                  <Input
+-                    type="password"
+-                    placeholder="Personal access token"
+-                    value={cred.token}
+-                    onChange={(e) => updateCredential(index, 'token', e.target.value)}
+-                    disabled={isSaving}
+-                    className="bg-background border-border text-foreground placeholder:text-muted-foreground"
+-                  />
+-                </div>
+               </div>
+             ))}
+           </div>
+@@ -273,6 +346,14 @@ export function GitSettings() {
+           </div>
+         )}
+       </div>
++
++      <GitCredentialDialog
++        open={isCredentialDialogOpen}
++        onOpenChange={setIsCredentialDialogOpen}
++        onSave={saveCredential}
++        credential={editingCredentialIndex !== null ? gitCredentials[editingCredentialIndex] : undefined}
++        isSaving={isSaving}
++      />
+     </div>
+   )
+ }
+diff --git a/frontend/vitest.config.ts b/frontend/vitest.config.ts
+index f4ae1f8..3d1495a 100644
+--- a/frontend/vitest.config.ts
++++ b/frontend/vitest.config.ts
+@@ -15,4 +15,7 @@ export default defineConfig({
+       "@": path.resolve(__dirname, "./src"),
+     },
+   },
++  define: {
++    "import.meta.vitest": "undefined",
++  },
+ });

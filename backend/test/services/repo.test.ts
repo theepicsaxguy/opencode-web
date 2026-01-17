@@ -1,27 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getReposPath } from '@opencode-manager/shared/config/env'
+import { executeCommand } from '../../src/utils/process'
+import { ensureDirectoryExists } from '../../src/services/file-operations'
+import { getRepoByLocalPath, createRepo, updateRepoStatus, deleteRepo } from '../../src/db/queries'
 
-const executeCommand = vi.fn()
-const ensureDirectoryExists = vi.fn()
-
-const getRepoByLocalPath = vi.fn()
-const createRepo = vi.fn()
-const updateRepoStatus = vi.fn()
-const deleteRepo = vi.fn()
+const mockedExecuteCommand = vi.mocked(executeCommand)
+const mockedEnsureDirectoryExists = vi.mocked(ensureDirectoryExists)
+const mockedGetRepoByLocalPath = vi.mocked(getRepoByLocalPath)
+const mockedCreateRepo = vi.mocked(createRepo)
+const mockedUpdateRepoStatus = vi.mocked(updateRepoStatus)
+const mockedDeleteRepo = vi.mocked(deleteRepo)
 
 vi.mock('../../src/utils/process', () => ({
-  executeCommand,
+  executeCommand: vi.fn(),
 }))
 
 vi.mock('../../src/services/file-operations', () => ({
-  ensureDirectoryExists,
+  ensureDirectoryExists: vi.fn(),
 }))
 
 vi.mock('../../src/db/queries', () => ({
-  getRepoByLocalPath,
-  createRepo,
-  updateRepoStatus,
-  deleteRepo,
+  getRepoByLocalPath: vi.fn(),
+  createRepo: vi.fn(),
+  updateRepoStatus: vi.fn(),
+  deleteRepo: vi.fn(),
 }))
 
 vi.mock('../../src/services/settings', () => ({
@@ -38,9 +40,8 @@ vi.mock('../../src/services/settings', () => ({
 describe('initLocalRepo', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.resetModules()
-    executeCommand.mockResolvedValue('')
-    ensureDirectoryExists.mockResolvedValue(undefined)
+    mockedExecuteCommand.mockResolvedValue('')
+    mockedEnsureDirectoryExists.mockResolvedValue(undefined)
   })
 
   it('creates new empty git repo for relative path', async () => {
@@ -48,8 +49,8 @@ describe('initLocalRepo', () => {
     const database = {} as unknown as Database
     const localPath = 'my-new-repo'
     
-    getRepoByLocalPath.mockReturnValue(null)
-    createRepo.mockReturnValue({
+    mockedGetRepoByLocalPath.mockReturnValue(null)
+    mockedCreateRepo.mockReturnValue({
       id: 1,
       repoUrl: undefined,
       localPath: 'my-new-repo',
@@ -61,9 +62,9 @@ describe('initLocalRepo', () => {
     
     const result = await initLocalRepo(database, localPath)
     
-    expect(executeCommand).toHaveBeenCalledWith(['git', 'init'], expect.any(Object))
-    expect(ensureDirectoryExists).toHaveBeenCalledWith(expect.stringContaining('my-new-repo'))
-    expect(updateRepoStatus).toHaveBeenCalledWith(database, 1, 'ready')
+    expect(mockedExecuteCommand).toHaveBeenCalledWith(['git', 'init'], expect.any(Object))
+    expect(mockedEnsureDirectoryExists).toHaveBeenCalledWith(expect.stringContaining('my-new-repo'))
+    expect(mockedUpdateRepoStatus).toHaveBeenCalledWith(database, 1, 'ready')
     expect(result.cloneStatus).toBe('ready')
   })
 

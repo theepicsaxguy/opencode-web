@@ -3,19 +3,32 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { Database } from 'bun:sqlite'
 import * as db from '../db/queries'
 import * as repoService from '../services/repo'
-import { GitAuthenticationError } from '../services/repo'
-import * as gitOperations from '../services/git-operations'
+import { GitAuthenticationError as RepoGitAuthenticationError } from '../services/repo'
 import * as archiveService from '../services/archive'
 import { SettingsService } from '../services/settings'
 import { writeFileContent } from '../services/file-operations'
 import { opencodeServerManager } from '../services/opencode-single-server'
 import { logger } from '../utils/logger'
-import { getErrorMessage, getStatusCode } from '../utils/error-utils'
+import { getErrorMessage, getStatusCode, handleGitError } from '../utils/error-utils'
 import { getOpenCodeConfigFilePath, getReposPath } from '@opencode-manager/shared/config/env'
+import { GitFetchService } from '../services/git/GitFetchService'
+import { GitCommitService } from '../services/git/GitCommitService'
+import { GitPushService } from '../services/git/GitPushService'
+import { GitLogService } from '../services/git/GitLogService'
+import { GitAuthService } from '../services/git/GitAuthService'
+import { GitCommandHandler } from '../handlers/GitCommandHandler'
+import { GitAuthenticationError, GitConflictError, GitNotFoundError, GitOperationError } from '../errors/git-errors'
+import type { GitStatusResponse } from '../types/git'
 import path from 'path'
 
 export function createRepoRoutes(database: Database) {
   const app = new Hono()
+  const gitAuthService = new GitAuthService()
+  const gitFetchService = new GitFetchService(gitAuthService)
+  const gitCommitService = new GitCommitService(gitAuthService)
+  const gitPushService = new GitPushService(gitAuthService)
+  const gitLogService = new GitLogService(gitAuthService)
+  const gitCommandHandler = new GitCommandHandler(gitFetchService, gitCommitService, gitPushService, gitLogService)
 
   app.post('/', async (c) => {
     try {
@@ -219,10 +232,10 @@ app.get('/', async (c) => {
       return c.json({ ...updatedRepo, currentBranch })
     } catch (error: unknown) {
       logger.error('Failed to switch branch:', error)
-      if (error instanceof GitAuthenticationError) {
-        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
-      return c.json({ error: getErrorMessage(error) }, 500)
+      return handleGitError(error, c)
     }
   })
 
@@ -253,6 +266,15 @@ app.get('/', async (c) => {
       if (error instanceof GitAuthenticationError) {
         return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
       }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+      }
       return c.json({ error: getErrorMessage(error) }, 500)
     }
   })
@@ -280,18 +302,52 @@ app.get('/', async (c) => {
     try {
       const id = parseInt(c.req.param('id'))
       const repo = db.getRepoById(database, id)
-      
+
       if (!repo) {
         return c.json({ error: 'Repo not found' }, 404)
       }
-      
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-       const status = await gitOperations.getGitStatus(repoPath, database)
 
-      
+      const status = await gitCommandHandler.getStatus(id, database)
+
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to get git status:', error)
+      return c.json({ error: getErrorMessage(error) }, 500)
+    }
+  })
+
+  app.post('/git-status-batch', async (c) => {
+    try {
+      const body = await c.req.json()
+      const { repoIds } = body
+
+      if (!Array.isArray(repoIds) || repoIds.some((id: unknown) => typeof id !== 'number')) {
+        return c.json({ error: 'repoIds must be an array of numbers' }, 400)
+      }
+
+      const statuses = await Promise.all(
+        repoIds.map(async (id) => {
+          try {
+            const status = await gitCommandHandler.getStatus(id, database)
+            return [id, status]
+          } catch (error: unknown) {
+            logger.error(`Failed to get git status for repo ${id}:`, error)
+            return null
+          }
+        })
+      )
+
+      const resultMap: Record<number, GitStatusResponse> = {}
+      for (const entry of statuses) {
+        if (entry) {
+          const [id, status] = entry
+          resultMap[id] = status
+        }
+      }
+
+      return c.json(resultMap)
+    } catch (error: unknown) {
+      logger.error('Failed to get batch git status:', error)
       return c.json({ error: getErrorMessage(error) }, 500)
     }
   })
@@ -311,9 +367,7 @@ app.get('/', async (c) => {
         return c.json({ error: 'Repo not found' }, 404)
       }
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-       const diff = await gitOperations.getFileDiff(repoPath, filePath, database)
-
+      const diff = await gitCommandHandler.getDiff(id, filePath, database)
 
       return c.json(diff)
     } catch (error: unknown) {
@@ -331,15 +385,23 @@ app.get('/', async (c) => {
         return c.json({ error: 'Repo not found' }, 404)
       }
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      await gitOperations.fetchGit(repoPath, database)
+      await gitCommandHandler.fetch(id, database)
 
-      const status = await gitOperations.getGitStatus(repoPath, database)
+      const status = await gitCommandHandler.getStatus(id, database)
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to fetch git:', error)
       if (error instanceof GitAuthenticationError) {
-        return c.json({ error: getErrorMessage(error) }, 401)
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }
@@ -354,15 +416,23 @@ app.get('/', async (c) => {
         return c.json({ error: 'Repo not found' }, 404)
       }
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      await gitOperations.pullGit(repoPath, database)
+      await gitCommandHandler.pull(id, database)
 
-      const status = await gitOperations.getGitStatus(repoPath, database)
+      const status = await gitCommandHandler.getStatus(id, database)
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to pull git:', error)
       if (error instanceof GitAuthenticationError) {
-        return c.json({ error: getErrorMessage(error) }, 401)
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }
@@ -384,15 +454,23 @@ app.get('/', async (c) => {
         return c.json({ error: 'message is required' }, 400)
       }
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      await gitOperations.commitGit(repoPath, message, stagedPaths, database)
+      await gitCommandHandler.commit(id, message, stagedPaths, database)
 
-      const status = await gitOperations.getGitStatus(repoPath, database)
+      const status = await gitCommandHandler.getStatus(id, database)
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to commit git:', error)
       if (error instanceof GitAuthenticationError) {
-        return c.json({ error: getErrorMessage(error) }, 401)
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }
@@ -410,15 +488,23 @@ app.get('/', async (c) => {
       const body = await c.req.json()
       const { setUpstream } = body
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      await gitOperations.pushGit(repoPath, setUpstream || false, database)
+      await gitCommandHandler.push(id, { setUpstream: setUpstream || false }, database)
 
-      const status = await gitOperations.getGitStatus(repoPath, database)
+      const status = await gitCommandHandler.getStatus(id, database)
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to push git:', error)
       if (error instanceof GitAuthenticationError) {
-        return c.json({ error: getErrorMessage(error) }, 401)
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }
@@ -440,15 +526,23 @@ app.get('/', async (c) => {
         return c.json({ error: 'paths is required and must be an array' }, 400)
       }
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      await gitOperations.stageFiles(repoPath, paths, database)
+      await gitCommandHandler.stageFiles(id, paths, database)
 
-      const status = await gitOperations.getGitStatus(repoPath, database)
+      const status = await gitCommandHandler.getStatus(id, database)
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to stage files:', error)
       if (error instanceof GitAuthenticationError) {
-        return c.json({ error: getErrorMessage(error) }, 401)
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }
@@ -470,21 +564,60 @@ app.get('/', async (c) => {
         return c.json({ error: 'paths is required and must be an array' }, 400)
       }
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      await gitOperations.unstageFiles(repoPath, paths, database)
+      await gitCommandHandler.unstageFiles(id, paths, database)
 
-      const status = await gitOperations.getGitStatus(repoPath, database)
+      const status = await gitCommandHandler.getStatus(id, database)
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to unstage files:', error)
       if (error instanceof GitAuthenticationError) {
-        return c.json({ error: getErrorMessage(error) }, 401)
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }
   })
 
-  app.post('/:id/git/log', async (c) => {
+  app.get('/:id/git/log', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const repo = db.getRepoById(database, id)
+
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const limit = parseInt(c.req.query('limit') || '10', 10)
+      const log = await gitCommandHandler.getLog(id, limit, database)
+
+      return c.json(log)
+    } catch (error: unknown) {
+      logger.error('Failed to get git log:', error)
+      if (error instanceof GitAuthenticationError) {
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
+      }
+      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+    }
+  })
+
+  app.post('/:id/git/reset', async (c) => {
     try {
       const id = parseInt(c.req.param('id'))
       const repo = db.getRepoById(database, id)
@@ -494,16 +627,29 @@ app.get('/', async (c) => {
       }
 
       const body = await c.req.json()
-      const { limit } = body
+      const { commitHash } = body
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      const log = await gitOperations.getGitLog(repoPath, limit || 10, database)
+      if (!commitHash) {
+        return c.json({ error: 'commitHash is required' }, 400)
+      }
 
-      return c.json(log)
+      await gitCommandHandler.resetToCommit(id, commitHash, database)
+
+      const status = await gitCommandHandler.getStatus(id, database)
+      return c.json(status)
     } catch (error: unknown) {
-      logger.error('Failed to get git log:', error)
+      logger.error('Failed to reset to commit:', error)
       if (error instanceof GitAuthenticationError) {
-        return c.json({ error: getErrorMessage(error) }, 401)
+        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
+      }
+      if (error instanceof GitConflictError) {
+        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
+      }
+      if (error instanceof GitNotFoundError) {
+        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
+      }
+      if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
+        return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
       return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
     }

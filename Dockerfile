@@ -93,8 +93,9 @@ RUN mkdir -p /app/backend/node_modules/@opencode-manager && \
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-RUN mkdir -p /workspace /app/data && \
-    chown -R node:node /workspace /app/data
+RUN mkdir -p /workspace /app/data /var/run/opencode && \
+    chown -R node:node /workspace /app/data /var/run/opencode && \
+    chmod 750 /var/run/opencode
 
 EXPOSE 5003 5100 5101 5102 5103
 
