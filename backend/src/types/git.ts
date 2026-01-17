@@ -22,3 +22,18 @@ export interface GitStatusResponse {
   files: GitFileStatus[]
   hasChanges: boolean
 }
+
+export interface FileDiffResponse {
+  path: string
+  status: GitFileStatusType
+  diff: string
+  additions: number
+  deletions: number
+  isBinary: boolean
+}
+
+export interface GitDiffOptions {
+  showContext?: number
+  ignoreWhitespace?: boolean
+  unified?: boolean
+}

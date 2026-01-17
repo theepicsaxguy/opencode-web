@@ -340,16 +340,47 @@ export async function getFileRange(userPath: string, startLine: number, endLine:
   }
 }
 
-export async function getFileTotalLines(userPath: string): Promise<number> {
+export async function applyFilePatches(userPath: string, patches: PatchOperation[]): Promise<{ success: boolean; totalLines: number }> {
   const validatedPath = validatePath(userPath)
+  logger.info(`Applying ${patches.length} patches to: ${userPath}`)
+  
   const exists = await fileExists(validatedPath)
   if (!exists) {
     throw { message: 'File does not exist', statusCode: 404 }
   }
-  return countFileLines(validatedPath)
+  
+  const content = await fs.readFile(validatedPath, 'utf8')
+  const lines = content.split('\n')
+  
+  const sortedPatches = [...patches].sort((a, b) => b.startLine - a.startLine)
+  
+  for (const patch of sortedPatches) {
+    const { type, startLine, endLine, content: patchContent } = patch
+    
+    switch (type) {
+      case 'replace': {
+        const end = endLine ?? startLine + 1
+        const newLines = patchContent?.split('\n') ?? []
+        lines.splice(startLine, end - startLine, ...newLines)
+        break
+      }
+      case 'insert': {
+        const newLines = patchContent?.split('\n') ?? []
+        lines.splice(startLine, 0, ...newLines)
+        break
+      }
+      case 'delete': {
+        const end = endLine ?? startLine + 1
+        lines.splice(startLine, end - startLine)
+        break
+      }
+    }
+  }
+  
+  await fs.writeFile(validatedPath, lines.join('\n'), 'utf8')
+  
+  return { success: true, totalLines: lines.length }
 }
-
-export async function applyFilePatches(userPath: string, patches: PatchOperation[]): Promise<{ success: boolean; totalLines: number }> {
   const validatedPath = validatePath(userPath)
   logger.info(`Applying ${patches.length} patches to: ${userPath}`)
   

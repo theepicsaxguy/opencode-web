@@ -11,17 +11,19 @@ import { GitStatusService } from '../services/git/GitStatusService'
 import { GitFetchPullService } from '../services/git/GitFetchPullService'
 import { GitBranchService } from '../services/git/GitBranchService'
 import { GitAuthService } from '../services/git-auth'
+import { GitDiffService } from '../services/git/GitDiffService'
 import type { GitStatusResponse } from '../types/git'
 
 export function createRepoGitRoutes(database: Database) {
   const app = new Hono()
   const gitAuthService = new GitAuthService()
+  const gitDiffService = new GitDiffService(gitAuthService)
   const gitFetchPullService = new GitFetchPullService(gitAuthService)
   const gitBranchService = new GitBranchService(gitAuthService)
   const gitFetchService = new GitFetchService(gitFetchPullService, gitBranchService)
   const gitCommitService = new GitCommitService(gitAuthService)
   const gitPushService = new GitPushService(gitAuthService)
-  const gitLogService = new GitLogService(gitAuthService)
+  const gitLogService = new GitLogService(gitAuthService, gitDiffService)
   const gitStatusService = new GitStatusService(gitAuthService)
 
   app.get('/:id/git/status', async (c) => {
@@ -98,6 +100,29 @@ export function createRepoGitRoutes(database: Database) {
       return c.json(diff)
     } catch (error: unknown) {
       logger.error('Failed to get file diff:', error)
+      return c.json({ error: getErrorMessage(error) }, 500)
+    }
+  })
+
+  // Add new endpoint for full diff details
+  app.get('/:id/git/diff-full', async (c) => {
+    try {
+      const id = parseInt(c.req.param('id'))
+      const filePath = c.req.query('path')
+
+      if (!filePath) {
+        return c.json({ error: 'path query parameter is required' }, 400)
+      }
+
+      const repo = db.getRepoById(database, id)
+      if (!repo) {
+        return c.json({ error: 'Repo not found' }, 404)
+      }
+
+      const diffResponse = await gitLogService.getFullDiff(id, filePath, database)
+      return c.json(diffResponse)
+    } catch (error: unknown) {
+      logger.error('Failed to get full file diff:', error)
       return c.json({ error: getErrorMessage(error) }, 500)
     }
   })

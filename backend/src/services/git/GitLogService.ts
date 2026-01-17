@@ -5,14 +5,17 @@ import { getErrorMessage } from '../../utils/error-utils'
 import * as db from '../../db/queries'
 import { getReposPath } from '@opencode-manager/shared/config/env'
 import type { Database } from 'bun:sqlite'
-import type { GitCommit } from '../../types/git'
+import type { GitCommit, FileDiffResponse } from '../../types/git'
 import path from 'path'
+import type { GitDiffService } from './GitDiffService'
 
 export class GitLogService {
   private gitAuthService: GitAuthService
+  private gitDiffService: GitDiffService
 
-  constructor(gitAuthService: GitAuthService) {
+  constructor(gitAuthService: GitAuthService, gitDiffService: GitDiffService) {
     this.gitAuthService = gitAuthService
+    this.gitDiffService = gitDiffService
   }
 
   async getLog(repoId: number, database: Database, limit: number = 10): Promise<GitCommit[]> {
@@ -109,28 +112,11 @@ export class GitLogService {
   }
 
   async getDiff(repoId: number, filePath: string, database: Database): Promise<string> {
-    try {
-      const repo = db.getRepoById(database, repoId)
-      if (!repo) {
-        throw new Error(`Repository not found: ${repoId}`)
-      }
+    const result = await this.gitDiffService.getFileDiff(repoId, filePath, database)
+    return result.diff
+  }
 
-      const repoPath = path.resolve(getReposPath(), repo.localPath)
-      const env = await this.gitAuthService.getGitEnvironment(repoId, database)
-
-      const diff = await executeCommand([
-        'git',
-        '-C',
-        repoPath,
-        'diff',
-        '--',
-        filePath
-      ], { env })
-
-      return diff
-    } catch (error: unknown) {
-      logger.error(`Failed to get diff for ${filePath} in repo ${repoId}:`, error)
-      throw new Error(`Failed to get diff: ${getErrorMessage(error)}`)
-    }
+  async getFullDiff(repoId: number, filePath: string, database: Database): Promise<FileDiffResponse> {
+    return this.gitDiffService.getFileDiff(repoId, filePath, database)
   }
 }

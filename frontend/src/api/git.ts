@@ -50,13 +50,24 @@ export async function fetchReposGitStatus(repoIds: number[]): Promise<Map<number
 }
 
 export async function fetchFileDiff(repoId: number, path: string): Promise<FileDiffResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/diff?path=${encodeURIComponent(path)}`)
+  const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/diff-full?path=${encodeURIComponent(path)}`)
 
   if (!response.ok) {
     await handleApiError(response)
   }
 
   return response.json()
+}
+
+export async function fetchGitDiff(repoId: number, path: string): Promise<{ diff: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/diff?path=${encodeURIComponent(path)}`)
+
+  if (!response.ok) {
+    await handleApiError(response)
+  }
+
+  const data = await response.json()
+  return { diff: data }
 }
 
 export async function fetchGitLog(repoId: number, limit?: number): Promise<{ commits: GitCommit[] }> {
@@ -148,15 +159,14 @@ export async function gitUnstageFiles(repoId: number, paths: string[]): Promise<
   return response.json()
 }
 
-export async function fetchGitDiff(repoId: number, path: string): Promise<{ diff: string }> {
+export async function fetchFullFileDiff(repoId: number, path: string): Promise<FileDiffResponse> {
   const response = await fetch(`${API_BASE_URL}/api/repos/${repoId}/git/diff-full?path=${encodeURIComponent(path)}`)
 
   if (!response.ok) {
     await handleApiError(response)
   }
 
-  const data = await response.json()
-  return { diff: data.diff }
+  return response.json()
 }
 
 export async function fetchBranches(repoId: number): Promise<{ branches: string[]; status: { ahead: number; behind: number } }> {
