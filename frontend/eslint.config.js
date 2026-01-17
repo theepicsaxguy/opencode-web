@@ -25,8 +25,6 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: {
         projectService: {
-          // Be more specific with allowed default projects
-          allowDefaultProject: [],
           defaultProject: "./tsconfig.app.json"
         },
         tsconfigRootDir: __dirname,

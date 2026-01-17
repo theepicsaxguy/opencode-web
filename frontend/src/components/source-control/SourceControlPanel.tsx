@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useGitStatus, getApiErrorMessage } from '@/api/git'
+import { listBranches, switchBranch } from '@/api/repos'
 import { useGit } from '@/hooks/useGit'
 import { ChangesTab } from './ChangesTab'
 import { CommitsTab } from './CommitsTab'
@@ -7,6 +9,7 @@ import { BranchesTab } from './BranchesTab'
 import { FileDiffView } from '@/components/file-browser/FileDiffView'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   Loader2,
   GitBranch,
@@ -18,6 +21,8 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  ChevronDown,
+  Check,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useMobile } from '@/hooks/useMobile'
@@ -40,8 +45,26 @@ export function SourceControlPanel({
   const [activeTab, setActiveTab] = useState<Tab>('changes')
   const [selectedFile, setSelectedFile] = useState<string | undefined>()
   const { data: status } = useGitStatus(repoId)
+  const { data: branches } = useQuery({
+    queryKey: ['branches', repoId],
+    queryFn: () => listBranches(repoId),
+    staleTime: 30000,
+  })
   const git = useGit(repoId)
+  const queryClient = useQueryClient()
   const isMobile = useMobile()
+
+  const switchBranchMutation = useMutation({
+    mutationFn: (branch: string) => switchBranch(repoId, branch),
+    onSuccess: (updatedRepo) => {
+      queryClient.setQueryData(['repo', repoId], updatedRepo)
+      queryClient.invalidateQueries({ queryKey: ['repos'] })
+      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
+    },
+    onError: (error) => {
+      console.error('Failed to switch branch', error)
+    },
+  })
 
   const handleGitAction = async (action: () => Promise<unknown>) => {
     try {
@@ -65,8 +88,29 @@ export function SourceControlPanel({
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2">
-          <GitBranch className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium">{currentBranch}</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 hover:bg-accent/50 rounded px-1 py-0.5 transition-colors">
+                <GitBranch className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{currentBranch}</span>
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              {branches?.all?.map((branch) => (
+                <DropdownMenuItem
+                  key={branch}
+                  onClick={() => branch !== currentBranch && switchBranchMutation.mutate(branch)}
+                  disabled={branch === currentBranch || switchBranchMutation.isPending}
+                  className="flex items-center gap-2"
+                >
+                  <GitBranch className="w-4 h-4" />
+                  <span className="flex-1 truncate">{branch}</span>
+                  {branch === currentBranch && <Check className="w-4 h-4 text-green-500" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {status && (status.ahead > 0 || status.behind > 0) && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               {status.ahead > 0 && (

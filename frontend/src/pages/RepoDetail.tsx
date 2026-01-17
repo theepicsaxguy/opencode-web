@@ -14,7 +14,6 @@ import { OPENCODE_API_ENDPOINT, API_BASE_URL } from "@/config";
 import { useSwipeBack } from "@/hooks/useMobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { BranchSwitcher } from "@/components/repo/BranchSwitcher";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Plug, FolderOpen, Plus, GitBranch, Loader2, GitCommitHorizontal } from "lucide-react";
 import { PendingActionsGroup } from "@/components/notifications/PendingActionsGroup";
@@ -133,14 +132,6 @@ export function RepoDetail() {
             <GitBranch className="h-3 w-3 sm:mr-1" />
             <span className="hidden sm:inline">WT: {currentBranch}</span>
           </Badge>
-        ) : !isWorktree && currentBranch ? (
-          <BranchSwitcher
-            repoId={repoId}
-            currentBranch={currentBranch}
-            isWorktree={false}
-            repoUrl={repo.repoUrl}
-            className="hidden sm:flex w-35 max-w-35"
-          />
         ) : null}
       </div>
       <Header.Actions>
@@ -175,21 +166,6 @@ export function RepoDetail() {
           <span className="hidden sm:inline">Files</span>
         </Button>
         <Header.MobileDropdown>
-          {!isWorktree && currentBranch && (
-            <>
-              <div className="px-2 py-1.5">
-                <BranchSwitcher
-                  repoId={repoId}
-                  currentBranch={currentBranch}
-                  isWorktree={false}
-                  repoUrl={repo.repoUrl}
-                  iconOnly={false}
-                  className="w-full"
-                />
-              </div>
-              <div className="h-px bg-border my-1" />
-            </>
-          )}
           <DropdownMenuItem onClick={() => setSourceControlOpen(true)}>
             <GitCommitHorizontal className="w-4 h-4 mr-2" /> Source Control
           </DropdownMenuItem>
