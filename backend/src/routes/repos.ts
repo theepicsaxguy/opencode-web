@@ -8,31 +8,15 @@ import { SettingsService } from '../services/settings'
 import { writeFileContent } from '../services/file-operations'
 import { opencodeServerManager } from '../services/opencode-single-server'
 import { logger } from '../utils/logger'
-import { getErrorMessage, getStatusCode, handleGitError } from '../utils/error-utils'
+import { getErrorMessage, getStatusCode } from '../utils/error-utils'
 import { getOpenCodeConfigFilePath, getReposPath } from '@opencode-manager/shared/config/env'
-import { GitFetchService } from '../services/git/GitFetchService'
-import { GitCommitService } from '../services/git/GitCommitService'
-import { GitPushService } from '../services/git/GitPushService'
-import { GitLogService } from '../services/git/GitLogService'
-import { GitStatusService } from '../services/git/GitStatusService'
-import { GitFetchPullService } from '../services/git/GitFetchPullService'
-import { GitBranchService } from '../services/git/GitBranchService'
-import { GitAuthService } from '../utils/git-auth'
-import { GitCommandHandler } from '../handlers/GitCommandHandler'
-import type { GitStatusResponse } from '../types/git'
+import { createRepoGitRoutes } from './repo-git'
 import path from 'path'
 
 export function createRepoRoutes(database: Database) {
   const app = new Hono()
-  const gitAuthService = new GitAuthService()
-  const gitFetchPullService = new GitFetchPullService(gitAuthService)
-  const gitBranchService = new GitBranchService(gitAuthService)
-  const gitFetchService = new GitFetchService(gitFetchPullService, gitBranchService)
-  const gitCommitService = new GitCommitService(gitAuthService)
-  const gitPushService = new GitPushService(gitAuthService)
-  const gitLogService = new GitLogService(gitAuthService)
-  const gitStatusService = new GitStatusService(gitAuthService)
-  const gitCommandHandler = new GitCommandHandler(gitFetchService, gitCommitService, gitPushService, gitLogService, gitStatusService)
+
+  app.route('/', createRepoGitRoutes(database))
 
   app.post('/', async (c) => {
     try {
@@ -236,7 +220,7 @@ app.get('/', async (c) => {
       return c.json({ ...updatedRepo, currentBranch })
     } catch (error: unknown) {
       logger.error('Failed to switch branch:', error)
-      return handleGitError(error, c)
+      return c.json({ error: getErrorMessage(error) }, 500)
     }
   })
 
@@ -264,7 +248,7 @@ app.get('/', async (c) => {
       return c.json({ ...updatedRepo, currentBranch })
     } catch (error: unknown) {
       logger.error('Failed to create branch:', error)
-      return handleGitError(error, c)
+      return c.json({ error: getErrorMessage(error) }, 500)
     }
   })
 
@@ -284,267 +268,6 @@ app.get('/', async (c) => {
     } catch (error: unknown) {
       logger.error('Failed to list branches:', error)
       return c.json({ error: getErrorMessage(error) }, 500)
-    }
-  })
-
-  app.get('/:id/git/status', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const status = await gitCommandHandler.getStatus(id, database)
-
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to get git status:', error)
-      return c.json({ error: getErrorMessage(error) }, 500)
-    }
-  })
-
-  app.post('/git-status-batch', async (c) => {
-    try {
-      const body = await c.req.json()
-      const { repoIds } = body
-
-      if (!Array.isArray(repoIds) || repoIds.some((id: unknown) => typeof id !== 'number')) {
-        return c.json({ error: 'repoIds must be an array of numbers' }, 400)
-      }
-
-      const statuses = await Promise.all(
-        repoIds.map(async (id) => {
-          try {
-            const status = await gitCommandHandler.getStatus(id, database)
-            return [id, status]
-          } catch (error: unknown) {
-            logger.error(`Failed to get git status for repo ${id}:`, error)
-            return null
-          }
-        })
-      )
-
-      const resultMap: Record<number, GitStatusResponse> = {}
-      for (const entry of statuses) {
-        if (entry) {
-          const [id, status] = entry
-          resultMap[id] = status
-        }
-      }
-
-      return c.json(resultMap)
-    } catch (error: unknown) {
-      logger.error('Failed to get batch git status:', error)
-      return c.json({ error: getErrorMessage(error) }, 500)
-    }
-  })
-
-  app.get('/:id/git/diff', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const filePath = c.req.query('path')
-
-      if (!filePath) {
-        return c.json({ error: 'path query parameter is required' }, 400)
-      }
-
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const diff = await gitCommandHandler.getDiff(id, filePath, database)
-
-      return c.json(diff)
-    } catch (error: unknown) {
-      logger.error('Failed to get file diff:', error)
-      return c.json({ error: getErrorMessage(error) }, 500)
-    }
-  })
-
-  app.post('/:id/git/fetch', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      await gitCommandHandler.fetch(id, database)
-
-      const status = await gitCommandHandler.getStatus(id, database)
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to fetch git:', error)
-      return handleGitError(error, c)
-    }
-  })
-
-  app.post('/:id/git/pull', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      await gitCommandHandler.pull(id, database)
-
-      const status = await gitCommandHandler.getStatus(id, database)
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to pull git:', error)
-      return handleGitError(error, c)
-    }
-  })
-
-  app.post('/:id/git/commit', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const body = await c.req.json()
-      const { message, stagedPaths } = body
-
-      if (!message) {
-        return c.json({ error: 'message is required' }, 400)
-      }
-
-      await gitCommandHandler.commit(id, message, database, stagedPaths)
-
-      const status = await gitCommandHandler.getStatus(id, database)
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to commit git:', error)
-      return handleGitError(error, c)
-    }
-  })
-
-  app.post('/:id/git/push', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const body = await c.req.json()
-      const { setUpstream } = body
-
-      await gitCommandHandler.push(id, { setUpstream: setUpstream || false }, database)
-
-      const status = await gitCommandHandler.getStatus(id, database)
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to push git:', error)
-      return handleGitError(error, c)
-    }
-  })
-
-  app.post('/:id/git/stage', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const body = await c.req.json()
-      const { paths } = body
-
-      if (!paths || !Array.isArray(paths)) {
-        return c.json({ error: 'paths is required and must be an array' }, 400)
-      }
-
-      await gitCommandHandler.stageFiles(id, paths, database)
-
-      const status = await gitCommandHandler.getStatus(id, database)
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to stage files:', error)
-      return handleGitError(error, c)
-    }
-  })
-
-  app.post('/:id/git/unstage', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const body = await c.req.json()
-      const { paths } = body
-
-      if (!paths || !Array.isArray(paths)) {
-        return c.json({ error: 'paths is required and must be an array' }, 400)
-      }
-
-      await gitCommandHandler.unstageFiles(id, paths, database)
-
-      const status = await gitCommandHandler.getStatus(id, database)
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to unstage files:', error)
-      return handleGitError(error, c)
-    }
-  })
-
-  app.get('/:id/git/log', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const limit = parseInt(c.req.query('limit') || '10', 10)
-      const log = await gitCommandHandler.getLog(id, database, limit)
-
-      return c.json(log)
-    } catch (error: unknown) {
-      logger.error('Failed to get git log:', error)
-      return handleGitError(error, c)
-    }
-  })
-
-  app.post('/:id/git/reset', async (c) => {
-    try {
-      const id = parseInt(c.req.param('id'))
-      const repo = db.getRepoById(database, id)
-
-      if (!repo) {
-        return c.json({ error: 'Repo not found' }, 404)
-      }
-
-      const body = await c.req.json()
-      const { commitHash } = body
-
-      if (!commitHash) {
-        return c.json({ error: 'commitHash is required' }, 400)
-      }
-
-      await gitCommandHandler.resetToCommit(id, commitHash, database)
-
-      const status = await gitCommandHandler.getStatus(id, database)
-      return c.json(status)
-    } catch (error: unknown) {
-      logger.error('Failed to reset to commit:', error)
-      return handleGitError(error, c)
     }
   })
 

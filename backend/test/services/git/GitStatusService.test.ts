@@ -19,6 +19,7 @@ vi.mock('../../../src/utils/git-auth', () => ({
   GitAuthService: vi.fn().mockImplementation(() => ({
     getGitEnvironment,
   })),
+  createNoPromptGitEnv: vi.fn(),
 }))
 
 describe('GitStatusService', () => {

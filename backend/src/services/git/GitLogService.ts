@@ -1,19 +1,12 @@
-import { GitAuthService } from '../../utils/git-auth'
+import { GitAuthService } from '../git-auth-service'
 import { executeCommand } from '../../utils/process'
 import { logger } from '../../utils/logger'
 import { getErrorMessage } from '../../utils/error-utils'
 import * as db from '../../db/queries'
 import { getReposPath } from '@opencode-manager/shared/config/env'
 import type { Database } from 'bun:sqlite'
+import type { GitCommit } from '../../types/git'
 import path from 'path'
-
-interface GitCommit {
-  hash: string
-  authorName: string
-  authorEmail: string
-  date: string
-  message: string
-}
 
 export class GitLogService {
   private gitAuthService: GitAuthService

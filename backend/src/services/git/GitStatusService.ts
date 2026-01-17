@@ -1,12 +1,10 @@
-import { GitAuthService } from '../../utils/git-auth'
+import { GitAuthService } from '../git-auth-service'
 import { executeCommand } from '../../utils/process'
 import { logger } from '../../utils/logger'
 import { getErrorMessage } from '../../utils/error-utils'
 import * as db from '../../db/queries'
 import type { Database } from 'bun:sqlite'
 import type { GitFileStatus, GitStatusResponse } from '../../types/git'
-import { GitAuthenticationError, GitNotFoundError, GitOperationError } from '../../errors/git-errors'
-import { GitCommandUtils } from '../../utils/git-command-utils'
 
 export class GitStatusService {
   constructor(private gitAuthService: GitAuthService) {}
@@ -15,7 +13,7 @@ export class GitStatusService {
     try {
       const repo = db.getRepoById(database, repoId)
       if (!repo) {
-        throw new GitNotFoundError(`Repository not found`)
+        throw new Error(`Repository not found`)
       }
 
       const repoPath = repo.fullPath
@@ -38,15 +36,8 @@ export class GitStatusService {
         hasChanges
       }
     } catch (error: unknown) {
-      if (error instanceof GitNotFoundError || error instanceof GitAuthenticationError || error instanceof GitOperationError) {
-        throw error
-      }
-      const errorMessage = getErrorMessage(error)
       logger.error(`Failed to get status for repo ${repoId}:`, error)
-      if (GitCommandUtils.isAuthenticationError(errorMessage)) {
-        throw new GitAuthenticationError('Authentication failed. Check your Git credentials in Settings.')
-      }
-      throw new GitOperationError(`Failed to get status: ${errorMessage}`)
+      throw error
     }
   }
 

@@ -22,7 +22,7 @@ export function createNoPromptGitEnv(): Record<string, string> {
   }
 }
 
-function getDefaultUsername(host: string): string {
+export function getDefaultUsername(host: string): string {
   try {
     const parsed = new URL(host)
     const hostname = parsed.hostname.toLowerCase()
@@ -39,7 +39,7 @@ function getDefaultUsername(host: string): string {
   }
 }
 
-function normalizeHost(host: string): string {
+export function normalizeHost(host: string): string {
   if (!host.endsWith('/')) {
     return `${host}/`
   }
@@ -124,14 +124,6 @@ export interface GitHubUserInfo {
   login: string
 }
 
-export function findGitHubCredentialFromToken(token: string): GitCredential {
-  return {
-    name: 'GitHub',
-    host: 'https://github.com/',
-    token,
-    username: 'x-access-token'
-  }
-}
 
 export interface GitIdentity {
   name: string

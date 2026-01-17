@@ -1,12 +1,11 @@
 import { executeCommand } from '../../utils/process'
 import { logger } from '../../utils/logger'
 import { getErrorMessage } from '../../utils/error-utils'
-import { GitAuthService, createNoPromptGitEnv } from '../../utils/git-auth'
+import { GitAuthService } from '../git-auth-service'
+import { createNoPromptGitEnv } from '../../utils/git-auth'
 import type { Database } from 'bun:sqlite'
 import * as db from '../../db/queries'
 import path from 'path'
-import { GitAuthenticationError, GitConflictError, GitNotFoundError, GitOperationError } from '../../errors/git-errors'
-import { GitCommandUtils } from '../../utils/git-command-utils'
 
 export class GitPushService {
   constructor(private gitAuthService: GitAuthService) {}
@@ -15,11 +14,11 @@ export class GitPushService {
     repoId: number,
     options: { setUpstream?: boolean },
     database: Database
-  ): Promise<{ stdout: string; stderr: string }> {
+  ): Promise<string> {
     try {
       const repo = db.getRepoById(database, repoId)
       if (!repo) {
-        throw new GitNotFoundError(`Repository not found`)
+        throw new Error(`Repository not found`)
       }
 
       const fullPath = path.resolve(repo.fullPath)
@@ -36,20 +35,10 @@ export class GitPushService {
 
       logger.info(`Successfully pushed changes for repo ${repoId}`)
 
-      return { stdout, stderr: '' }
+      return stdout
     } catch (error: unknown) {
-      if (error instanceof GitNotFoundError || error instanceof GitAuthenticationError || error instanceof GitConflictError || error instanceof GitOperationError) {
-        throw error
-      }
-      const errorMessage = getErrorMessage(error)
       logger.error(`Failed to push changes for repo ${repoId}:`, error)
-      if (GitCommandUtils.isAuthenticationError(errorMessage)) {
-        throw new GitAuthenticationError('Authentication failed. Check your Git credentials in Settings.')
-      }
-      if (GitCommandUtils.isConflictError(errorMessage)) {
-        throw new GitConflictError('Merge conflict detected. Resolve conflicts and try again.')
-      }
-      throw new GitOperationError(`Failed to push changes: ${errorMessage}`)
+      throw error
     }
   }
 
@@ -65,15 +54,8 @@ export class GitPushService {
 
       return stdout.trim()
     } catch (error: unknown) {
-      if (error instanceof GitNotFoundError || error instanceof GitAuthenticationError || error instanceof GitOperationError) {
-        throw error
-      }
-      const errorMessage = getErrorMessage(error)
       logger.error(`Failed to get current branch for ${repoPath}:`, error)
-      if (GitCommandUtils.isAuthenticationError(errorMessage)) {
-        throw new GitAuthenticationError('Authentication failed. Check your Git credentials in Settings.')
-      }
-      throw new GitOperationError(`Failed to get current branch: ${errorMessage}`)
+      throw error
     }
   }
 
@@ -98,14 +80,8 @@ export class GitPushService {
       ) {
         return null
       }
-      if (error instanceof GitAuthenticationError || error instanceof GitOperationError) {
-        throw error
-      }
       logger.error(`Failed to get upstream branch for ${repoPath}:`, error)
-      if (GitCommandUtils.isAuthenticationError(errorMessage)) {
-        throw new GitAuthenticationError('Authentication failed. Check your Git credentials in Settings.')
-      }
-      throw new GitOperationError(`Failed to get upstream branch: ${errorMessage}`)
+      throw error
     }
   }
 }

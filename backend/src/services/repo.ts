@@ -8,7 +8,6 @@ import { SettingsService } from './settings'
 import { createGitEnv, createNoPromptGitEnv, createGitHubGitEnv, isGitHubHttpsUrl } from '../utils/git-auth'
 import { getReposPath } from '@opencode-manager/shared/config/env'
 import path from 'path'
-import { GitAuthenticationError } from '../errors/git-errors'
 
 interface ErrorWithMessage {
   message: string
@@ -66,7 +65,7 @@ async function executeGitWithFallback(
       try {
         return await executeCommand(cmd, { cwd, env: createNoPromptGitEnv(), silent })
       } catch {
-        throw new GitAuthenticationError(`Authentication failed for Git command: ${getErrorMessage(error)}`)
+        throw new Error(`Authentication failed for Git command: ${getErrorMessage(error)}`)
       }
     }
 
@@ -85,7 +84,7 @@ async function executeGitWithFallback(
     try {
       return await executeCommand(cmd, { cwd, env: createNoPromptGitEnv(), silent })
     } catch {
-      throw new GitAuthenticationError(`Authentication failed for Git command: ${getErrorMessage(error)}`)
+      throw new Error(`Authentication failed for Git command: ${getErrorMessage(error)}`)
     }
   }
 }

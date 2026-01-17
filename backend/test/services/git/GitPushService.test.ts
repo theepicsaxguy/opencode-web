@@ -3,20 +3,21 @@ import { GitPushService } from '../../../src/services/git/GitPushService'
 import type { Database } from 'bun:sqlite'
 import { executeCommand } from '../../../src/utils/process'
 import { getRepoById } from '../../../src/db/queries'
-import { GitAuthService } from '../../../src/utils/git-auth'
+import { GitAuthService } from '../../src/utils/git-auth'
 
-vi.mock('../../../src/utils/process', () => ({
+vi.mock('../../src/utils/process', () => ({
   executeCommand: vi.fn(),
 }))
 
-vi.mock('../../../src/db/queries', () => ({
+vi.mock('../../src/db/queries', () => ({
   getRepoById: vi.fn(),
 }))
 
-vi.mock('../../../src/utils/git-auth', () => ({
+vi.mock('../../src/utils/git-auth', () => ({
   GitAuthService: vi.fn().mockImplementation(() => ({
     getGitEnvironment: vi.fn(),
   })),
+  createNoPromptGitEnv: vi.fn(() => ({ GIT_TERMINAL_PROMPT: '0' })),
 }))
 
 describe('GitPushService', () => {
