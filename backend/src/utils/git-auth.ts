@@ -94,28 +94,6 @@ export function findGitHubCredential(credentials: GitCredential[]): GitCredentia
   }) || null
 }
 
-export function getCredentialForHost(credentials: GitCredential[], host: string): GitCredential | null {
-  if (!credentials || credentials.length === 0) return null
-  
-  // Extract hostname from host
-  let hostname: string
-  try {
-    hostname = new URL(host.startsWith('http') ? host : `https://${host}`).hostname.toLowerCase()
-  } catch {
-    hostname = host.toLowerCase()
-  }
-  
-  return credentials.find(cred => {
-    let credHostname: string
-    try {
-      credHostname = new URL(cred.host.startsWith('http') ? cred.host : `https://${cred.host}`).hostname.toLowerCase()
-    } catch {
-      credHostname = cred.host.toLowerCase()
-    }
-    return credHostname === hostname
-  }) || null
-}
-
 
 
 export interface GitHubUserInfo {

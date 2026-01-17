@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest'
 import { GitFetchService } from '../../../src/services/git/GitFetchService'
 import type { Database } from 'bun:sqlite'
@@ -48,7 +49,6 @@ vi.mock('child_process', () => ({
   spawn: vi.fn(),
 }))
 
-const spawnMock = spawn as MockedFunction<typeof spawn>
 const getRepoByIdMock = getRepoById as MockedFunction<typeof getRepoById>
 
 describe('GitFetchService', () => {
@@ -58,7 +58,6 @@ describe('GitFetchService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     database = {} as Database
-    spawnMock.mockClear()
     const fetchPullService = new GitFetchPullService(mockGitAuthService)
     const branchService = new GitBranchService(mockGitAuthService)
     service = new GitFetchService(fetchPullService, branchService)
@@ -68,7 +67,11 @@ describe('GitFetchService', () => {
     it('fetches all changes from remote', async () => {
       const mockRepo = {
         id: 1,
+        localPath: 'test-repo',
         fullPath: '/path/to/repo',
+        defaultBranch: 'main',
+        cloneStatus: 'ready' as const,
+        clonedAt: 1234567890,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
 
@@ -91,7 +94,11 @@ describe('GitFetchService', () => {
     it('throws error when fetch command fails', async () => {
       const mockRepo = {
         id: 1,
+        localPath: 'test-repo',
         fullPath: '/path/to/repo',
+        defaultBranch: 'main',
+        cloneStatus: 'ready' as const,
+        clonedAt: 1234567890,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
 
@@ -103,7 +110,11 @@ describe('GitFetchService', () => {
     it('throws error when fetch command fails', async () => {
       const mockRepo = {
         id: 1,
+        localPath: 'test-repo',
         fullPath: '/path/to/repo',
+        defaultBranch: 'main',
+        cloneStatus: 'ready' as const,
+        clonedAt: 1234567890,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
       const mockProc = {
@@ -111,7 +122,7 @@ describe('GitFetchService', () => {
         stderr: { on: vi.fn((event, callback) => { if (event === 'data') callback(Buffer.from('Fetch failed')) }) },
         on: vi.fn((event, callback) => { if (event === 'close') callback(128) }),
       }
-      spawn.mockReturnValue(mockProc)
+      ;(spawn as any).mockReturnValue(mockProc)
 
       await expect(service.fetch(1, database)).rejects.toThrow('Failed to fetch changes')
     })
@@ -121,7 +132,11 @@ describe('GitFetchService', () => {
     it('pulls changes from remote', async () => {
       const mockRepo = {
         id: 1,
+        localPath: 'test-repo',
         fullPath: '/path/to/repo',
+        defaultBranch: 'main',
+        cloneStatus: 'ready' as const,
+        clonedAt: 1234567890,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
 
@@ -144,7 +159,11 @@ describe('GitFetchService', () => {
     it('throws error when pull command fails', async () => {
       const mockRepo = {
         id: 1,
+        localPath: 'test-repo',
         fullPath: '/path/to/repo',
+        defaultBranch: 'main',
+        cloneStatus: 'ready' as const,
+        clonedAt: 1234567890,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
 
@@ -164,7 +183,11 @@ describe('GitFetchService', () => {
     it('throws error when pull command fails', async () => {
       const mockRepo = {
         id: 1,
+        localPath: 'test-repo',
         fullPath: '/path/to/repo',
+        defaultBranch: 'main',
+        cloneStatus: 'ready' as const,
+        clonedAt: 1234567890,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
 

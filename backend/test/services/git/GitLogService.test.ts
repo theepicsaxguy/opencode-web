@@ -1,11 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GitLogService } from '../../../src/services/git/GitLogService'
 import type { Database } from 'bun:sqlite'
 
-const executeCommand = vi.fn()
-const getRepoById = vi.fn()
-const getGitEnvironment = vi.fn()
+const executeCommand = vi.fn() as any
+const getRepoById = vi.fn() as any
+const getGitEnvironment = vi.fn() as any
 
 vi.mock('../../../src/utils/process', () => ({
   executeCommand,
@@ -50,7 +51,7 @@ describe('GitLogService', () => {
         'def456|Jane Smith|jane@example.com|2024-01-02 13:00:00 +0000|Second commit'
       )
 
-      const result = await service.getLog(1, 10, database)
+      const result = await service.getLog(1, database, 10)
 
       expect(getRepoById).toHaveBeenCalledWith(database, 1)
       expect(executeCommand).toHaveBeenCalledWith(
@@ -82,7 +83,7 @@ describe('GitLogService', () => {
       getRepoById.mockReturnValue(mockRepo)
       executeCommand.mockResolvedValue('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|First commit')
 
-      await service.getLog(1, 5, database)
+      await service.getLog(1, database, 5)
 
       expect(executeCommand).toHaveBeenCalledWith(
         ['git', '-C', '/repos/test-repo', 'log', '-n', '5', '--format=%H|%an|%ae|%ai|%s'],
@@ -98,10 +99,10 @@ describe('GitLogService', () => {
       getRepoById.mockReturnValue(mockRepo)
       executeCommand.mockResolvedValue('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|')
 
-      const result = await service.getLog(1, 10, database)
+      const result = await service.getLog(1, database, 10)
 
       expect(result).toHaveLength(1)
-      expect(result[0].message).toBe('')
+      expect(result[0]?.message).toBe('')
     })
 
     it('handles commits with multi-line messages', async () => {
@@ -112,10 +113,10 @@ describe('GitLogService', () => {
       getRepoById.mockReturnValue(mockRepo)
       executeCommand.mockResolvedValue('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|Multi|line commit')
 
-      const result = await service.getLog(1, 10, database)
+      const result = await service.getLog(1, database, 10)
 
       expect(result).toHaveLength(1)
-      expect(result[0].message).toBe('Multi|line commit')
+      expect(result[0]?.message).toBe('Multi|line commit')
     })
 
     it('handles empty log output', async () => {
@@ -126,7 +127,7 @@ describe('GitLogService', () => {
       getRepoById.mockReturnValue(mockRepo)
       executeCommand.mockResolvedValue('')
 
-      const result = await service.getLog(1, 10, database)
+      const result = await service.getLog(1, database, 10)
 
       expect(result).toEqual([])
     })
@@ -139,10 +140,10 @@ describe('GitLogService', () => {
       getRepoById.mockReturnValue(mockRepo)
       executeCommand.mockResolvedValue('\n\nabc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|Test\n\n')
 
-      const result = await service.getLog(1, 10, database)
+      const result = await service.getLog(1, database, 10)
 
       expect(result).toHaveLength(1)
-      expect(result[0].hash).toBe('abc123')
+      expect(result[0]?.hash).toBe('abc123')
     })
 
     it('skips lines without hash', async () => {
@@ -153,7 +154,7 @@ describe('GitLogService', () => {
       getRepoById.mockReturnValue(mockRepo)
       executeCommand.mockResolvedValue('|John Doe|john@example.com|2024-01-01 12:00:00 +0000|No hash')
 
-      const result = await service.getLog(1, 10, database)
+      const result = await service.getLog(1, database, 10)
 
       expect(result).toEqual([])
     })
@@ -161,7 +162,7 @@ describe('GitLogService', () => {
     it('throws error when repository not found', async () => {
       getRepoById.mockReturnValue(null)
 
-      await expect(service.getLog(999, 10, database)).rejects.toThrow('Repository not found: 999')
+      await expect(service.getLog(999, database, 10)).rejects.toThrow('Repository not found: 999')
     })
 
     it('throws error when log command fails', async () => {
@@ -172,7 +173,7 @@ describe('GitLogService', () => {
       getRepoById.mockReturnValue(mockRepo)
       executeCommand.mockRejectedValue(new Error('Not a git repository'))
 
-      await expect(service.getLog(1, 10, database)).rejects.toThrow('Failed to get git log')
+      await expect(service.getLog(1, database, 10)).rejects.toThrow('Failed to get git log')
     })
   })
 
