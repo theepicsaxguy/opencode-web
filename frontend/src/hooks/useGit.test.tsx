@@ -230,8 +230,6 @@ describe('useGit', () => {
       })
 
       expect(gitApi.fetchGitLog).toHaveBeenCalledWith(1, 10)
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['gitStatus', 1] })
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['gitLog', 1] })
     })
 
     it('calls correct API without limit', async () => {
@@ -265,8 +263,6 @@ describe('useGit', () => {
       })
 
       expect(gitApi.fetchGitDiff).toHaveBeenCalledWith(1, 'src/file.ts')
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['gitStatus', 1] })
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['gitLog', 1] })
     })
 
     it('shows toast error on failure', async () => {

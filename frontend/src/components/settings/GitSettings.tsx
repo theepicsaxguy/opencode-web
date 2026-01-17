@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useSettings } from '@/hooks/useSettings'
-import { Loader2, Plus, Trash2, Save, Check, X, TestTube } from 'lucide-react'
-import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
+import { Loader2 } from 'lucide-react'
 import { showToast } from '@/lib/toast'
 import { GitCredentialDialog } from './GitCredentialDialog'
+import { GitIdentitySettings } from './GitIdentitySettings'
+import { GitCredentialsList } from './GitCredentialsList'
 import { settingsApi } from '@/api/settings'
 import type { GitCredential, GitIdentity } from '@/api/types/settings'
 
@@ -38,7 +38,7 @@ export function GitSettings() {
   const checkForIdentityChanges = (newIdentity: GitIdentity) => {
     const currentIdentity = preferences?.gitIdentity || { name: '', email: '' }
     setHasIdentityChanges(
-      currentIdentity.name !== newIdentity.name || 
+      currentIdentity.name !== newIdentity.name ||
       currentIdentity.email !== newIdentity.email
     )
   }
@@ -55,14 +55,14 @@ export function GitSettings() {
 
   const saveCredential = async (credential: GitCredential) => {
     let newCredentials: GitCredential[]
-    
+
     if (editingCredentialIndex !== null) {
       newCredentials = [...gitCredentials]
       newCredentials[editingCredentialIndex] = credential
     } else {
       newCredentials = [...gitCredentials, credential]
     }
-    
+
     setGitCredentials(newCredentials)
     checkForCredentialChanges(newCredentials)
     clearTestResult(editingCredentialIndex ?? newCredentials.length - 1)
@@ -88,15 +88,23 @@ export function GitSettings() {
     setTestingCredentialIndex(index)
     try {
       const result = await settingsApi.testGitCredential(credential)
-      setTestResults(prev => ({ 
-        ...prev, 
-        [index]: { 
-          success: result.success, 
-          message: result.error 
-        } 
+      setTestResults(prev => ({
+        ...prev,
+        [index]: {
+          success: result.success,
+          message: result.error
+        }
       }))
-      
+
       if (result.success) {
+        if (result.maskedToken) {
+          const updatedCredentials = [...gitCredentials]
+          updatedCredentials[index] = {
+            ...credential,
+            token: result.maskedToken
+          }
+          setGitCredentials(updatedCredentials)
+        }
         showToast.success(`Successfully connected to ${credential.host}`)
       } else {
         showToast.error(`Connection failed: ${result.error || 'Unknown error'}`)
@@ -162,190 +170,28 @@ export function GitSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-card border border-border rounded-lg p-6">
-        <h2 className="text-lg font-semibold text-foreground mb-6">Git Identity</h2>
-        
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Configure the default author identity used for git commits in local repositories.
-            Leave empty to use system defaults.
-          </p>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="git-name">Name</Label>
-              <Input
-                id="git-name"
-                placeholder="Your Name"
-                value={gitIdentity.name}
-                onChange={(e) => updateIdentity('name', e.target.value)}
-                disabled={isSaving}
-                className="bg-background border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="git-email">Email</Label>
-              <Input
-                id="git-email"
-                type="email"
-                placeholder="you@example.com"
-                value={gitIdentity.email}
-                onChange={(e) => updateIdentity('email', e.target.value)}
-                disabled={isSaving}
-                className="bg-background border-border text-foreground placeholder:text-muted-foreground"
-              />
-            </div>
-          </div>
-          
-          {hasIdentityChanges && (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={saveIdentity}
-                disabled={isSaving}
-              >
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                Save Identity
-              </Button>
-            </div>
-          )}
-          
-          <p className="text-xs text-muted-foreground">
-            If not configured, defaults to "OpenCode User" and "opencode@localhost" for new local repositories.
-          </p>
-        </div>
-      </div>
+      <GitIdentitySettings
+        gitIdentity={gitIdentity}
+        hasIdentityChanges={hasIdentityChanges}
+        isSaving={isSaving}
+        onUpdateIdentity={updateIdentity}
+        onSaveIdentity={saveIdentity}
+      />
 
-      <div className="bg-card border border-border rounded-lg p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">Git Credentials</h2>
-            <p className="text-sm text-muted-foreground">
-              Add credentials for cloning private repositories from any Git host
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {hasCredentialChanges && (
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={saveCredentials}
-                disabled={isSaving}
-              >
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                Save
-              </Button>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={openAddCredentialDialog}
-              disabled={isSaving}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add
-            </Button>
-          </div>
-        </div>
-
-        {gitCredentials.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              No git credentials configured. Click "Add" to add credentials for GitHub, GitLab, Gitea, or other Git hosts.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {gitCredentials.map((cred, index) => (
-              <div key={index} className="rounded-lg border border-border p-4 space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-foreground mb-1">{cred.name || 'Unnamed Credential'}</h3>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span>Host:</span>
-                        <span className="text-foreground">{cred.host || 'Not configured'}</span>
-                      </div>
-                      {cred.username && (
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <span>Username:</span>
-                          <span className="text-foreground">{cred.username}</span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <span>Token:</span>
-                        <span className="font-mono text-foreground">{maskToken(cred.token)}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {testResults[index] && (
-                      <div className={`flex items-center gap-1 text-xs ${testResults[index].success ? 'text-green-500' : 'text-red-500'}`}>
-                        {testResults[index].success ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                        <span>{testResults[index].success ? 'Connected' : testResults[index].message || 'Failed'}</span>
-                      </div>
-                    )}
-                    
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => testCredential(index)}
-                      disabled={testingCredentialIndex === index}
-                      title="Test Connection"
-                    >
-                      {testingCredentialIndex === index ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <TestTube className="h-4 w-4" />
-                      )}
-                    </Button>
-                    
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openEditCredentialDialog(index)}
-                      disabled={isSaving}
-                      title="Edit"
-                    >
-                      <Save className="h-4 w-4" />
-                    </Button>
-                    
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeCredential(index)}
-                      disabled={isSaving}
-                      className="text-destructive hover:text-destructive"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        <p className="text-xs text-muted-foreground mt-4">
-          Username defaults: github.com uses "x-access-token", gitlab.com uses "oauth2". For other hosts, specify your username if required.
-        </p>
-
-        {isUpdating && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-4">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Saving...</span>
-          </div>
-        )}
-      </div>
+      <GitCredentialsList
+        gitCredentials={gitCredentials}
+        hasCredentialChanges={hasCredentialChanges}
+        isSaving={isSaving}
+        isUpdating={isUpdating}
+        testResults={testResults}
+        testingCredentialIndex={testingCredentialIndex}
+        onOpenAddDialog={openAddCredentialDialog}
+        onOpenEditDialog={openEditCredentialDialog}
+        onRemoveCredential={removeCredential}
+        onTestCredential={testCredential}
+        onSaveCredentials={saveCredentials}
+        maskToken={maskToken}
+      />
 
       <GitCredentialDialog
         open={isCredentialDialogOpen}

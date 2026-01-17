@@ -2,6 +2,7 @@ import { GitFetchService } from '../services/git/GitFetchService'
 import { GitCommitService } from '../services/git/GitCommitService'
 import { GitPushService } from '../services/git/GitPushService'
 import { GitLogService } from '../services/git/GitLogService'
+import { GitStatusService } from '../services/git/GitStatusService'
 import type { GitCommit, GitStatusResponse } from '../types/git'
 import type { Database } from 'bun:sqlite'
 
@@ -10,7 +11,8 @@ export class GitCommandHandler {
     private fetchService: GitFetchService,
     private commitService: GitCommitService,
     private pushService: GitPushService,
-    private logService: GitLogService
+    private logService: GitLogService,
+    private statusService: GitStatusService
   ) {}
 
   async fetch(repoId: number, database: Database): Promise<{ stdout: string; stderr: string }> {
@@ -63,7 +65,7 @@ export class GitCommandHandler {
   }
 
   async getStatus(repoId: number, database: Database): Promise<GitStatusResponse> {
-    return this.commitService.getStatus(repoId, database)
+    return this.statusService.getStatus(repoId, database)
   }
 
   async resetToCommit(

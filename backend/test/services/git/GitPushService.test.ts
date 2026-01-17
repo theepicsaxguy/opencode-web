@@ -2,22 +2,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GitPushService } from '../../../src/services/git/GitPushService'
 import type { Database } from 'bun:sqlite'
-
-const executeCommand = vi.fn()
-const getRepoById = vi.fn()
-const getGitEnvironment = vi.fn()
+import { executeCommand } from '../../../src/utils/process'
+import { getRepoById } from '../../../src/db/queries'
+import { GitAuthService } from '../../../src/utils/git-auth'
 
 vi.mock('../../../src/utils/process', () => ({
-  executeCommand,
+  executeCommand: vi.fn(),
 }))
 
 vi.mock('../../../src/db/queries', () => ({
-  getRepoById,
+  getRepoById: vi.fn(),
 }))
 
 vi.mock('../../../src/utils/git-auth', () => ({
   GitAuthService: vi.fn().mockImplementation(() => ({
-    getGitEnvironment,
+    getGitEnvironment: vi.fn(),
   })),
 }))
 
@@ -28,10 +27,9 @@ describe('GitPushService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     database = {} as Database
-    const { GitAuthService } = require('../../../src/utils/git-auth')
     const gitAuthService = new GitAuthService()
+    gitAuthService.getGitEnvironment.mockReturnValue({})
     service = new GitPushService(gitAuthService)
-    getGitEnvironment.mockReturnValue({})
   })
 
   describe('push', () => {

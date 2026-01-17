@@ -1,10 +1,9 @@
 import { GitAuthService } from './GitAuthService'
-import { executeCommand } from '../../utils/process'
 import { logger } from '../../utils/logger'
 import { getErrorMessage } from '../../utils/error-utils'
 import * as db from '../../db/queries'
 import type { Database } from 'bun:sqlite'
-import type { GitFileStatus, GitStatusResponse } from '../../types/git'
+
 import { spawn } from 'child_process'
 import { GitAuthenticationError, GitNotFoundError, GitOperationError } from '../../errors/git-errors'
 
@@ -135,63 +134,7 @@ export class GitCommitService {
     }
   }
 
-  private parsePorcelainOutput(output: string): GitFileStatus[] {
-    const files: GitFileStatus[] = []
-    const lines = output.trim().split('\n').filter(line => line.trim())
 
-    for (const line of lines) {
-      if (line.length < 3) continue
-
-      const stagedStatus = line[0] as string
-      const unstagedStatus = line[1] as string
-      const filePath = line.substring(3)
-
-      if (stagedStatus !== ' ' && stagedStatus !== '?') {
-        files.push({
-          path: filePath,
-          status: this.parseStatusCode(stagedStatus),
-          staged: true
-        })
-      }
-
-      if (unstagedStatus !== ' ' && unstagedStatus !== '?') {
-        files.push({
-          path: filePath,
-          status: this.parseStatusCode(unstagedStatus),
-          staged: false
-        })
-      }
-
-      if (stagedStatus === '?' || unstagedStatus === '?') {
-        files.push({
-          path: filePath,
-          status: 'untracked',
-          staged: false
-        })
-      }
-    }
-
-    return files
-  }
-
-  private parseStatusCode(code: string): 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'copied' {
-    switch (code) {
-      case 'M':
-        return 'modified'
-      case 'A':
-        return 'added'
-      case 'D':
-        return 'deleted'
-      case 'R':
-        return 'renamed'
-      case 'C':
-        return 'copied'
-      case '?':
-        return 'untracked'
-      default:
-        return 'modified'
-    }
-  }
 
   private async executeCommandWithStderr(
     args: string[],

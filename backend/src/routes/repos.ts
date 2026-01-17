@@ -263,19 +263,10 @@ app.get('/', async (c) => {
       return c.json({ ...updatedRepo, currentBranch })
     } catch (error: unknown) {
       logger.error('Failed to create branch:', error)
-      if (error instanceof GitAuthenticationError) {
-        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
-      }
-      if (error instanceof GitConflictError) {
-        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
-      }
-      if (error instanceof GitNotFoundError) {
-        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
-      }
       if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
         return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
-      return c.json({ error: getErrorMessage(error) }, 500)
+      return handleGitError(error, c)
     }
   })
 
@@ -391,19 +382,10 @@ app.get('/', async (c) => {
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to fetch git:', error)
-      if (error instanceof GitAuthenticationError) {
-        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
-      }
-      if (error instanceof GitConflictError) {
-        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
-      }
-      if (error instanceof GitNotFoundError) {
-        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
-      }
       if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
         return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
-      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+      return handleGitError(error, c)
     }
   })
 
@@ -422,19 +404,10 @@ app.get('/', async (c) => {
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to pull git:', error)
-      if (error instanceof GitAuthenticationError) {
-        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
-      }
-      if (error instanceof GitConflictError) {
-        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
-      }
-      if (error instanceof GitNotFoundError) {
-        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
-      }
       if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
         return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
-      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+      return handleGitError(error, c)
     }
   })
 
@@ -460,19 +433,10 @@ app.get('/', async (c) => {
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to commit git:', error)
-      if (error instanceof GitAuthenticationError) {
-        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
-      }
-      if (error instanceof GitConflictError) {
-        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
-      }
-      if (error instanceof GitNotFoundError) {
-        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
-      }
       if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
         return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
-      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+      return handleGitError(error, c)
     }
   })
 
@@ -494,19 +458,10 @@ app.get('/', async (c) => {
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to push git:', error)
-      if (error instanceof GitAuthenticationError) {
-        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
-      }
-      if (error instanceof GitConflictError) {
-        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
-      }
-      if (error instanceof GitNotFoundError) {
-        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
-      }
       if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
         return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
-      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+      return handleGitError(error, c)
     }
   })
 
@@ -532,19 +487,10 @@ app.get('/', async (c) => {
       return c.json(status)
     } catch (error: unknown) {
       logger.error('Failed to stage files:', error)
-      if (error instanceof GitAuthenticationError) {
-        return c.json({ error: error.message, code: 'AUTH_FAILED' }, 401)
-      }
-      if (error instanceof GitConflictError) {
-        return c.json({ error: error.message, code: 'CONFLICT' }, 409)
-      }
-      if (error instanceof GitNotFoundError) {
-        return c.json({ error: error.message, code: 'NOT_FOUND' }, 404)
-      }
       if (error instanceof GitOperationError || error instanceof RepoGitAuthenticationError) {
         return c.json({ error: error.message, code: 'OPERATION_FAILED' }, 500)
       }
-      return c.json({ error: getErrorMessage(error) }, getStatusCode(error) as ContentfulStatusCode)
+      return handleGitError(error, c)
     }
   })
 

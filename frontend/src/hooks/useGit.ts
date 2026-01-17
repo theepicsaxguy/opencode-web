@@ -1,10 +1,25 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchGit, pullGit, pushGit, commitGit, stageFiles, unstageFiles, fetchGitLog, fetchGitDiff, createBranch, switchBranch } from '@/api/git'
+import { fetchGit, pullGit, pushGit, commitGit, stageFiles, unstageFiles, fetchGitLog, fetchGitDiff, createBranch, switchBranch, GitError } from '@/api/git'
 import { showToast } from '@/lib/toast'
-import type { UseMutationResult } from '@tanstack/react-query'
 
 export function useGit(repoId: number | undefined) {
   const queryClient = useQueryClient()
+
+  const invalidateCache = (additionalKeys: string[] = []) => {
+    if (!repoId) return
+    const keys = ['gitStatus', 'fileDiff', 'gitLog', ...additionalKeys]
+    keys.forEach(key => queryClient.invalidateQueries({ queryKey: [key, repoId] }))
+  }
+
+  const handleError = (error: unknown, fallbackMessage: string) => {
+    if (error instanceof GitError) {
+      showToast.error(error.message)
+    } else if (error instanceof Error) {
+      showToast.error(error.message)
+    } else {
+      showToast.error(fallbackMessage)
+    }
+  }
 
   const fetch = useMutation({
     mutationFn: () => {
@@ -12,12 +27,10 @@ export function useGit(repoId: number | undefined) {
       return fetchGit(repoId)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+      invalidateCache()
+      showToast.success('Fetch completed')
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to fetch')
-    }
+    onError: (error) => handleError(error, 'Fetch failed')
   })
 
   const pull = useMutation({
@@ -26,12 +39,10 @@ export function useGit(repoId: number | undefined) {
       return pullGit(repoId)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+      invalidateCache()
+      showToast.success('Pull completed')
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to pull')
-    }
+    onError: (error) => handleError(error, 'Pull failed')
   })
 
   const push = useMutation({
@@ -39,13 +50,11 @@ export function useGit(repoId: number | undefined) {
       if (!repoId) throw new Error('No repo ID')
       return pushGit(repoId, setUpstream)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+    onSuccess: (_, variables) => {
+      invalidateCache()
+      showToast.success(variables.setUpstream ? 'Branch published' : 'Push completed')
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to push')
-    }
+    onError: (error) => handleError(error, 'Push failed')
   })
 
   const commit = useMutation({
@@ -54,12 +63,10 @@ export function useGit(repoId: number | undefined) {
       return commitGit(repoId, message, stagedPaths)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+      invalidateCache()
+      showToast.success('Commit created')
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to commit')
-    }
+    onError: (error) => handleError(error, 'Commit failed')
   })
 
   const stageFilesMutation = useMutation({
@@ -67,13 +74,11 @@ export function useGit(repoId: number | undefined) {
       if (!repoId) throw new Error('No repo ID')
       return stageFiles(repoId, paths)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+    onSuccess: (_, paths) => {
+      invalidateCache()
+      paths.forEach(path => showToast.success(`Staged: ${path}`))
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to stage files')
-    }
+    onError: (error) => handleError(error, 'Failed to stage files')
   })
 
   const unstageFilesMutation = useMutation({
@@ -81,13 +86,11 @@ export function useGit(repoId: number | undefined) {
       if (!repoId) throw new Error('No repo ID')
       return unstageFiles(repoId, paths)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+    onSuccess: (_, paths) => {
+      invalidateCache()
+      paths.forEach(path => showToast.success(`Unstaged: ${path}`))
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to unstage files')
-    }
+    onError: (error) => handleError(error, 'Failed to unstage files')
   })
 
   const log = useMutation({
@@ -95,13 +98,7 @@ export function useGit(repoId: number | undefined) {
       if (!repoId) throw new Error('No repo ID')
       return fetchGitLog(repoId, limit)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
-    },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to fetch git log')
-    }
+    onError: (error) => handleError(error, 'Failed to fetch git log')
   })
 
   const diff = useMutation({
@@ -109,13 +106,7 @@ export function useGit(repoId: number | undefined) {
       if (!repoId) throw new Error('No repo ID')
       return fetchGitDiff(repoId, path)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
-    },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to fetch git diff')
-    }
+    onError: (error) => handleError(error, 'Failed to fetch file diff')
   })
 
   const createBranchMutation = useMutation({
@@ -124,13 +115,10 @@ export function useGit(repoId: number | undefined) {
       return createBranch(repoId, branchName)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['branches', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+      invalidateCache(['branches'])
+      showToast.success('Branch created')
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to create branch')
-    }
+    onError: (error) => handleError(error, 'Failed to create branch')
   })
 
   const switchBranchMutation = useMutation({
@@ -139,13 +127,10 @@ export function useGit(repoId: number | undefined) {
       return switchBranch(repoId, branchName)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gitStatus', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['branches', repoId] })
-      queryClient.invalidateQueries({ queryKey: ['gitLog', repoId] })
+      invalidateCache(['branches'])
+      showToast.success('Switched to branch')
     },
-    onError: (error: Error) => {
-      showToast.error(error.message || 'Failed to switch branch')
-    }
+    onError: (error) => handleError(error, 'Failed to switch branch')
   })
 
   return {
@@ -159,16 +144,5 @@ export function useGit(repoId: number | undefined) {
     diff,
     createBranch: createBranchMutation,
     switchBranch: switchBranchMutation
-  } as {
-    fetch: UseMutationResult
-    pull: UseMutationResult
-    push: UseMutationResult
-    commit: UseMutationResult
-    stageFiles: UseMutationResult
-    unstageFiles: UseMutationResult
-    log: UseMutationResult
-    diff: UseMutationResult
-    createBranch: UseMutationResult
-    switchBranch: UseMutationResult
   }
 }

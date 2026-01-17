@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createRepoRoutes } from '../../src/routes/repos'
 import type { Hono } from 'hono'
-
-const mockGetRepoById = vi.fn()
+import { getRepoById } from '../../src/db/queries'
 
 vi.mock('bun:sqlite', () => ({
   Database: vi.fn(),
@@ -17,7 +16,7 @@ vi.mock('../../src/utils/logger', () => ({
 }))
 
 vi.mock('../../src/db/queries', () => ({
-  getRepoById: mockGetRepoById,
+  getRepoById: vi.fn(),
 }))
 
 describe('Git Routes', () => {
@@ -27,13 +26,12 @@ describe('Git Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockDatabase = {}
-    mockGetRepoById.mockClear()
     app = createRepoRoutes(mockDatabase)
   })
 
   describe('GET /:id/git/status', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/status')
       const body = await response.json()
 
@@ -42,7 +40,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails for non-existent path', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/status')
       const body = await response.json()
 
@@ -53,7 +51,7 @@ describe('Git Routes', () => {
 
   describe('POST /:id/git/fetch', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/fetch', { method: 'POST' })
       const body = await response.json()
 
@@ -62,7 +60,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/fetch', { method: 'POST' })
       const body = await response.json()
 
@@ -73,7 +71,7 @@ describe('Git Routes', () => {
 
   describe('POST /:id/git/pull', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/pull', { method: 'POST' })
       const body = await response.json()
 
@@ -82,7 +80,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/pull', { method: 'POST' })
       const body = await response.json()
 
@@ -93,7 +91,7 @@ describe('Git Routes', () => {
 
   describe('POST /:id/git/push', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/push', { method: 'POST' })
       const body = await response.json()
 
@@ -102,7 +100,7 @@ describe('Git Routes', () => {
     })
 
     it('should accept setUpstream parameter', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,7 +113,7 @@ describe('Git Routes', () => {
     })
 
     it('should work without setUpstream parameter', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,7 +126,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -143,7 +141,7 @@ describe('Git Routes', () => {
 
   describe('POST /:id/git/commit', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -156,7 +154,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 400 when message is missing', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -169,7 +167,7 @@ describe('Git Routes', () => {
     })
 
     it('should accept message and stagedPaths', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -182,7 +180,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -197,7 +195,7 @@ describe('Git Routes', () => {
 
   describe('POST /:id/git/stage', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/stage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,7 +208,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 400 when paths is not an array', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/stage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -223,7 +221,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 400 when paths is missing', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/stage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -236,7 +234,7 @@ describe('Git Routes', () => {
     })
 
     it('should accept array of paths', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/stage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -249,7 +247,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/stage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -264,7 +262,7 @@ describe('Git Routes', () => {
 
   describe('POST /:id/git/unstage', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/unstage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -277,7 +275,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 400 when paths is not an array', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/unstage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -290,7 +288,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 400 when paths is missing', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/unstage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -303,7 +301,7 @@ describe('Git Routes', () => {
     })
 
     it('should accept array of paths', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/unstage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -316,7 +314,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/unstage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -331,7 +329,7 @@ describe('Git Routes', () => {
 
   describe('GET /:id/git/log', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/log')
       const body = await response.json()
 
@@ -340,7 +338,7 @@ describe('Git Routes', () => {
     })
 
     it('should use default limit when not provided', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/log')
       const body = await response.json()
 
@@ -349,7 +347,7 @@ describe('Git Routes', () => {
     })
 
     it('should use custom limit when provided', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/log?limit=5')
       const body = await response.json()
 
@@ -358,7 +356,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/log')
       const body = await response.json()
 
@@ -369,7 +367,7 @@ describe('Git Routes', () => {
 
   describe('GET /:id/git/diff', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/diff?path=file.ts')
       const body = await response.json()
 
@@ -386,7 +384,7 @@ describe('Git Routes', () => {
     })
 
     it('should accept path parameter', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/diff?path=file.ts')
       await response.text()
 
@@ -394,13 +392,13 @@ describe('Git Routes', () => {
     })
 
     it('should handle special characters in path', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/diff?path=src%2Fcomponents%2FButton.tsx')
       expect([200, 500]).toContain(response.status)
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/diff?path=file.ts')
       expect([200, 500]).toContain(response.status)
     })
@@ -408,7 +406,7 @@ describe('Git Routes', () => {
 
   describe('POST /:id/git/reset', () => {
     it('should return 404 when repo does not exist', async () => {
-      mockGetRepoById.mockReturnValue(null)
+      getRepoById.mockReturnValue(null)
       const response = await app.request('/999/git/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -421,7 +419,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 400 when commitHash is missing', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -434,7 +432,7 @@ describe('Git Routes', () => {
     })
 
     it('should accept commitHash parameter', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -447,7 +445,7 @@ describe('Git Routes', () => {
     })
 
     it('should return 500 when git operation fails', async () => {
-      mockGetRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
+      getRepoById.mockReturnValue({ id: 1, localPath: 'test-repo', fullPath: '/nonexistent/path' })
       const response = await app.request('/1/git/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

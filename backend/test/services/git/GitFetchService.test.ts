@@ -1,30 +1,44 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
+const mockFetchPullService = {
+  fetch: vi.fn(),
+  pull: vi.fn(),
+}
+
+const mockBranchService = {
+  getBranches: vi.fn(),
+  getBranchStatus: vi.fn(),
+  createBranch: vi.fn(),
+  switchBranch: vi.fn(),
+  hasCommits: vi.fn(),
+}
+
+vi.mock('../../../src/services/git/GitFetchPullService', () => ({
+  GitFetchPullService: vi.fn().mockImplementation(() => mockFetchPullService),
+}))
+
+vi.mock('../../../src/services/git/GitBranchService', () => ({
+  GitBranchService: vi.fn().mockImplementation(() => mockBranchService),
+}))
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { GitFetchService } from '../../../src/services/git/GitFetchService'
 import type { Database } from 'bun:sqlite'
-
-const executeCommand = vi.fn()
-const getRepoById = vi.fn()
-const getGitEnvironment = vi.fn()
+import { spawn } from 'child_process'
+import { executeCommand } from '../../../src/utils/process'
+import { getRepoById } from '../../../src/db/queries'
+import { GitFetchPullService } from '../../../src/services/git/GitFetchPullService'
+import { GitBranchService } from '../../../src/services/git/GitBranchService'
 
 vi.mock('../../../src/utils/process', () => ({
-  executeCommand,
+  executeCommand: vi.fn(),
 }))
 
 vi.mock('../../../src/db/queries', () => ({
-  getRepoById,
+  getRepoById: vi.fn(),
 }))
-
-vi.mock('../../../src/utils/git-auth', () => ({
-  GitAuthService: vi.fn().mockImplementation(() => ({
-    getGitEnvironment,
-  })),
-}))
-
-const mockSpawn = vi.fn()
 
 vi.mock('child_process', () => ({
-  spawn: mockSpawn,
+  spawn: vi.fn(),
 }))
 
 describe('GitFetchService', () => {
@@ -34,11 +48,10 @@ describe('GitFetchService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     database = {} as Database
-    mockSpawn.mockClear()
-    const { GitAuthService } = require('../../../src/utils/git-auth')
-    const gitAuthService = new GitAuthService()
-    service = new GitFetchService(gitAuthService)
-    getGitEnvironment.mockReturnValue({})
+    spawn.mockClear()
+    const fetchPullService = new GitFetchPullService()
+    const branchService = new GitBranchService()
+    service = new GitFetchService(fetchPullService, branchService)
   })
 
   describe('fetch', () => {
@@ -49,27 +62,32 @@ describe('GitFetchService', () => {
       }
       getRepoById.mockReturnValue(mockRepo)
 
-      const mockProc = {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn() },
-        on: vi.fn((event, callback) => { if (event === 'close') callback(0) }),
-      }
-      mockSpawn.mockReturnValue(mockProc)
+      mockFetchPullService.fetch.mockResolvedValue({ stdout: '', stderr: '' })
 
       const result = await service.fetch(1, database)
 
-      expect(getRepoById).toHaveBeenCalledWith(database, 1)
-      expect(mockSpawn).toHaveBeenCalledWith('git', ['-C', mockRepo.fullPath, 'fetch', '--all', '--prune-tags'], {
-        shell: false,
-        env: expect.any(Object),
-      })
+      expect(mockFetchPullService.fetch).toHaveBeenCalledWith(1, database)
       expect(result).toEqual({ stdout: '', stderr: '' })
     })
 
     it('throws error when repository not found', async () => {
       getRepoById.mockReturnValue(null)
 
+      mockFetchPullService.fetch.mockRejectedValue(new Error('Repository not found'))
+
       await expect(service.fetch(999, database)).rejects.toThrow('Repository not found')
+    })
+
+    it('throws error when fetch command fails', async () => {
+      const mockRepo = {
+        id: 1,
+        fullPath: '/path/to/repo',
+      }
+      getRepoById.mockReturnValue(mockRepo)
+
+      mockFetchPullService.fetch.mockRejectedValue(new Error('Failed to fetch changes'))
+
+      await expect(service.fetch(1, database)).rejects.toThrow('Failed to fetch changes')
     })
 
     it('throws error when fetch command fails', async () => {
@@ -83,7 +101,7 @@ describe('GitFetchService', () => {
         stderr: { on: vi.fn((event, callback) => { if (event === 'data') callback(Buffer.from('Fetch failed')) }) },
         on: vi.fn((event, callback) => { if (event === 'close') callback(128) }),
       }
-      mockSpawn.mockReturnValue(mockProc)
+      spawn.mockReturnValue(mockProc)
 
       await expect(service.fetch(1, database)).rejects.toThrow('Failed to fetch changes')
     })
@@ -97,25 +115,18 @@ describe('GitFetchService', () => {
       }
       getRepoById.mockReturnValue(mockRepo)
 
-      const mockProc = {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn() },
-        on: vi.fn((event, callback) => { if (event === 'close') callback(0) }),
-      }
-      mockSpawn.mockReturnValue(mockProc)
+      mockFetchPullService.pull.mockResolvedValue({ stdout: '', stderr: '' })
 
       const result = await service.pull(1, database)
 
-      expect(getRepoById).toHaveBeenCalledWith(database, 1)
-      expect(mockSpawn).toHaveBeenCalledWith('git', ['-C', mockRepo.fullPath, 'pull'], {
-        shell: false,
-        env: expect.any(Object),
-      })
+      expect(mockFetchPullService.pull).toHaveBeenCalledWith(1, database)
       expect(result).toEqual({ stdout: '', stderr: '' })
     })
 
     it('throws error when repository not found', async () => {
       getRepoById.mockReturnValue(null)
+
+      mockFetchPullService.pull.mockRejectedValue(new Error('Repository not found'))
 
       await expect(service.pull(999, database)).rejects.toThrow('Repository not found')
     })
@@ -126,12 +137,28 @@ describe('GitFetchService', () => {
         fullPath: '/path/to/repo',
       }
       getRepoById.mockReturnValue(mockRepo)
-      const mockProc = {
-        stdout: { on: vi.fn() },
-        stderr: { on: vi.fn((event, callback) => { if (event === 'data') callback(Buffer.from('Pull failed')) }) },
-        on: vi.fn((event, callback) => { if (event === 'close') callback(1) }),
+
+      mockFetchPullService.pull.mockRejectedValue(new Error('Failed to pull changes'))
+
+      await expect(service.pull(1, database)).rejects.toThrow('Failed to pull changes')
+    })
+
+    it('throws error when repository not found', async () => {
+      getRepoById.mockReturnValue(null)
+
+      mockFetchPullService.pull.mockRejectedValue(new Error('Repository not found'))
+
+      await expect(service.pull(999, database)).rejects.toThrow('Repository not found')
+    })
+
+    it('throws error when pull command fails', async () => {
+      const mockRepo = {
+        id: 1,
+        fullPath: '/path/to/repo',
       }
-      mockSpawn.mockReturnValue(mockProc)
+      getRepoById.mockReturnValue(mockRepo)
+
+      mockFetchPullService.pull.mockRejectedValue(new Error('Failed to pull changes'))
 
       await expect(service.pull(1, database)).rejects.toThrow('Failed to pull changes')
     })
@@ -139,25 +166,25 @@ describe('GitFetchService', () => {
 
   describe('hasCommits', () => {
     it('returns true when repository has commits', async () => {
-      executeCommand.mockResolvedValue('abc123')
+      mockBranchService.hasCommits.mockResolvedValue(true)
 
       const result = await service.hasCommits('/path/to/repo')
 
-      expect(executeCommand).toHaveBeenCalledWith(['git', '-C', '/path/to/repo', 'rev-parse', 'HEAD'], { silent: true })
+      expect(mockBranchService.hasCommits).toHaveBeenCalledWith('/path/to/repo')
       expect(result).toBe(true)
     })
 
     it('returns false when repository has no commits', async () => {
-      executeCommand.mockRejectedValue(new Error('fatal: not a git repository'))
+      mockBranchService.hasCommits.mockResolvedValue(false)
 
       const result = await service.hasCommits('/path/to/repo')
 
-      expect(executeCommand).toHaveBeenCalledWith(['git', '-C', '/path/to/repo', 'rev-parse', 'HEAD'], { silent: true })
+      expect(mockBranchService.hasCommits).toHaveBeenCalledWith('/path/to/repo')
       expect(result).toBe(false)
     })
 
     it('returns false when HEAD does not exist', async () => {
-      executeCommand.mockRejectedValue(new Error('fatal: ambiguous argument'))
+      mockBranchService.hasCommits.mockResolvedValue(false)
 
       const result = await service.hasCommits('/path/to/repo')
 

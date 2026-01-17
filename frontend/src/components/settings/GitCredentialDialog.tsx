@@ -23,10 +23,19 @@ export function GitCredentialDialog({ open, onOpenChange, onSave, credential, is
     username: '',
   })
 
+  const maskToken = (token: string) => {
+    if (!token) return ''
+    if (token.length <= 8) return '•'.repeat(token.length)
+    return token.slice(0, 8) + '...'
+  }
+
   useEffect(() => {
     if (open) {
       if (credential) {
-        setFormData(credential)
+        setFormData({
+          ...credential,
+          token: maskToken(credential.token)
+        })
       } else {
         setFormData({ name: '', host: '', token: '', username: '' })
       }

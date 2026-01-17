@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useGitStatus, useGitLog, GitError } from '@/api/git'
-import { useGitMutations } from '@/hooks/useGitMutations'
+import { useGit } from '@/hooks/useGit'
 import { showToast } from '@/lib/toast'
 import { Loader2, FileText, FilePlus, FileX, FileEdit, File, ChevronRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Folder, FolderOpen, RefreshCw, Download, Upload, Check, Plus, X, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -260,7 +260,7 @@ function GitTreeNodeItem({ node, level, selectedFile, expandedPaths, onToggle, o
 export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChangesPanelProps) {
   const { data: status, isLoading, error } = useGitStatus(repoId)
   const { data: commits } = useGitLog(repoId, 5)
-  const gitMutations = useGitMutations(repoId)
+  const git = useGit(repoId)
   const [filter, setFilter] = useState<GitFileStatusType | 'all'>('all')
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [commitMessage, setCommitMessage] = useState('')
@@ -317,21 +317,11 @@ export function GitChangesPanel({ repoId, onFileSelect, selectedFile }: GitChang
   }
 
   const handleStage = async (path: string) => {
-    try {
-      await gitMutations.stageFiles.mutateAsync([path])
-      showToast.success(`Staged: ${path}`)
-    } catch (error) {
-      showToast.error(error instanceof Error ? error.message : 'Failed to stage file')
-    }
+    await git.stageFiles.mutateAsync([path])
   }
 
   const handleUnstage = async (path: string) => {
-    try {
-      await gitMutations.unstageFiles.mutateAsync([path])
-      showToast.success(`Unstaged: ${path}`)
-    } catch (error) {
-      showToast.error(error instanceof Error ? error.message : 'Failed to unstage file')
-    }
+    await git.unstageFiles.mutateAsync([path])
   }
 
   const handleFetch = async () => {
