@@ -60,15 +60,20 @@ vi.mock('fs/promises', () => ({
 
 describe('Settings Routes', () => {
   let app: Hono
-  let mockDatabase: Record<string, unknown>
+  let mockDatabase: any
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockDatabase = {}
+    mockDatabase = {
+      run: vi.fn(),
+      prepare: vi.fn(() => ({
+        run: vi.fn()
+      }))
+    }
     Object.keys(mockSettingsService).forEach(key => {
       (mockSettingsService as any)[key].mockClear()
     })
-    app = createSettingsRoutes(mockDatabase as any)
+    app = createSettingsRoutes(mockDatabase)
   })
 
   describe('POST /test-credential', () => {

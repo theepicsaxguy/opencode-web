@@ -21,11 +21,16 @@ vi.mock('../../src/db/queries', () => ({
 
 describe('Git Routes', () => {
   let app: Hono
-  let mockDatabase: Record<string, unknown>
+  let mockDatabase: any
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockDatabase = {}
+    mockDatabase = {
+      run: vi.fn(),
+      prepare: vi.fn(() => ({
+        run: vi.fn()
+      }))
+    }
     app = createRepoRoutes(mockDatabase)
   })
 

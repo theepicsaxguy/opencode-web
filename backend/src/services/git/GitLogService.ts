@@ -94,7 +94,9 @@ export class GitLogService {
         return null
       }
 
-      const [commitHash, authorName, authorEmail, date, message] = output.trim().split('|', 5)
+      const parts = output.trim().split('|')
+      const [commitHash, authorName, authorEmail, date, ...messageParts] = parts
+      const message = messageParts.join('|')
 
       if (!commitHash) {
         return null

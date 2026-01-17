@@ -26,8 +26,8 @@ export class GitCommandHandler {
   async commit(
     repoId: number,
     message: string,
-    stagedPaths?: string[],
-    database: Database
+    database: Database,
+    stagedPaths?: string[]
   ): Promise<{ stdout: string; stderr: string }> {
     return this.commitService.commit(repoId, message, database, stagedPaths)
   }
