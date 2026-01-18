@@ -83,35 +83,23 @@ export function BranchesTab({ repoId, currentBranch }: BranchesTabProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="p-3 border-b border-border space-y-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <GitBranch className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Current: {activeBranch}</span>
-            {status && (status.ahead > 0 || status.behind > 0) && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                {status.ahead > 0 && (
-                  <span className="flex items-center gap-0.5">
-                    <ArrowUp className="w-3 h-3" />{status.ahead}
-                  </span>
-                )}
-                {status.behind > 0 && (
-                  <span className="flex items-center gap-0.5">
-                    <ArrowDown className="w-3 h-3" />{status.behind}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0"
-            onClick={() => refetch()}
-            disabled={isLoading}
-            title="Refresh branches"
-          >
-            <Loader2 className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-          </Button>
+        <div className="flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Current: {activeBranch}</span>
+          {status && (status.ahead > 0 || status.behind > 0) && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              {status.ahead > 0 && (
+                <span className="flex items-center gap-0.5">
+                  <ArrowUp className="w-3 h-3" />{status.ahead}
+                </span>
+              )}
+              {status.behind > 0 && (
+                <span className="flex items-center gap-0.5">
+                  <ArrowDown className="w-3 h-3" />{status.behind}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {isCreating ? (
