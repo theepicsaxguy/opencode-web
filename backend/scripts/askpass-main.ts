@@ -56,9 +56,19 @@ function main(argv: string[]): void {
     const chunks: Buffer[] = []
     res.on('data', d => chunks.push(d))
     res.on('end', () => {
-      const result = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-      fs.writeFileSync(output, result + '\n')
-      process.exit(0)
+      const body = Buffer.concat(chunks).toString('utf8')
+      if (!body) {
+        fs.writeFileSync(output, '\n')
+        return process.exit(0)
+      }
+      try {
+        const result = JSON.parse(body)
+        fs.writeFileSync(output, result + '\n')
+        process.exit(0)
+      } catch {
+        fs.writeFileSync(output, '\n')
+        process.exit(1)
+      }
     })
   })
 

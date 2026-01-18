@@ -4,6 +4,7 @@ import type { IPCServer, IPCHandler } from './ipcServer'
 import type { Database } from 'bun:sqlite'
 import { SettingsService } from '../services/settings'
 import type { GitCredential } from '../utils/git-auth'
+import { logger } from '../utils/logger'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -37,10 +38,14 @@ export class AskpassHandler implements IPCHandler {
 
     if (this.ipcServer) {
       this.ipcServer.registerHandler('askpass', this)
+      logger.info('AskpassHandler registered with IPC server')
+    } else {
+      logger.warn('AskpassHandler: No IPC server provided, using empty askpass')
     }
   }
 
   async handle(request: AskpassRequest): Promise<string> {
+    logger.info(`Askpass request: type=${request.askpassType}, argv=${request.argv.join(', ')}`)
     if (request.askpassType === 'https') {
       return this.handleHttpsAskpass(request.argv)
     }
@@ -82,14 +87,17 @@ export class AskpassHandler implements IPCHandler {
   }
 
   private async getCredentialsForHost(hostname: string): Promise<Credentials | null> {
+    logger.info(`Looking up credentials for host: ${hostname}`)
     const settingsService = new SettingsService(this.database)
     const settings = settingsService.getSettings('default')
     const gitCredentials: GitCredential[] = settings.preferences.gitCredentials || []
+    logger.info(`Found ${gitCredentials.length} configured git credentials`)
 
     for (const cred of gitCredentials) {
       try {
         const parsed = new URL(cred.host)
         if (parsed.hostname.toLowerCase() === hostname.toLowerCase()) {
+          logger.info(`Found matching credential for ${hostname}`)
           return {
             username: cred.username || this.getDefaultUsername(cred.host),
             password: cred.token,
@@ -97,6 +105,7 @@ export class AskpassHandler implements IPCHandler {
         }
       } catch {
         if (cred.host.toLowerCase().includes(hostname.toLowerCase())) {
+          logger.info(`Found matching credential (fuzzy match) for ${hostname}`)
           return {
             username: cred.username || 'oauth2',
             password: cred.token,
@@ -104,6 +113,7 @@ export class AskpassHandler implements IPCHandler {
         }
       }
     }
+    logger.warn(`No credentials found for host: ${hostname}`)
     return null
   }
 

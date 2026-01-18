@@ -3,6 +3,7 @@ import * as crypto from 'crypto'
 import * as path from 'path'
 import * as os from 'os'
 import * as fs from 'fs/promises'
+import { logger } from '../utils/logger'
 
 function getIPCHandlePath(id: string): string {
   if (process.platform === 'win32') {
@@ -39,6 +40,7 @@ export class IPCServer {
   private onRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const handler = this.handlers.get(req.url || '')
     if (!handler) {
+      logger.warn(`IPC handler not found for path: ${req.url}`)
       res.writeHead(404)
       res.end()
       return
@@ -48,13 +50,21 @@ export class IPCServer {
     req.on('data', (d: Buffer) => chunks.push(d))
     req.on('end', async () => {
       try {
-        const request = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+        const body = Buffer.concat(chunks).toString('utf8')
+        if (!body) {
+          logger.warn(`Empty request body for path: ${req.url}`)
+          res.writeHead(400)
+          res.end(JSON.stringify({ error: 'Empty request body' }))
+          return
+        }
+        const request = JSON.parse(body)
         const result = await handler.handle(request)
         res.writeHead(200)
         res.end(JSON.stringify(result))
-      } catch {
+      } catch (error) {
+        logger.error(`IPC request error for path ${req.url}:`, error)
         res.writeHead(500)
-        res.end()
+        res.end(JSON.stringify({ error: 'Internal server error' }))
       }
     })
   }
