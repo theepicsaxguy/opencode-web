@@ -4,7 +4,7 @@ import { listBranches, switchBranch, GitAuthError } from '@/api/repos'
 import { useGitStatus } from '@/api/git'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, GitBranch, Check, Plus, AlertCircle, ArrowUp, ArrowDown } from 'lucide-react'
+import { Loader2, GitBranch, Check, Plus, AlertCircle, ArrowUp, ArrowDown, RefreshCw, Globe } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/lib/toast'
 import { useGit } from '@/hooks/useGit'
@@ -23,7 +23,7 @@ export function BranchesTab({ repoId, currentBranch }: BranchesTabProps) {
 
   const { data: status } = useGitStatus(repoId)
 
-  const { data: branches, isLoading, error, refetch } = useQuery({
+  const { data: branches, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['branches', repoId],
     queryFn: () => listBranches(repoId),
     staleTime: 30000,
@@ -83,23 +83,35 @@ export function BranchesTab({ repoId, currentBranch }: BranchesTabProps) {
   return (
     <div className="flex flex-col h-full">
       <div className="p-3 border-b border-border space-y-3 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <GitBranch className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Current: {activeBranch}</span>
-          {status && (status.ahead > 0 || status.behind > 0) && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              {status.ahead > 0 && (
-                <span className="flex items-center gap-0.5">
-                  <ArrowUp className="w-3 h-3" />{status.ahead}
-                </span>
-              )}
-              {status.behind > 0 && (
-                <span className="flex items-center gap-0.5">
-                  <ArrowDown className="w-3 h-3" />{status.behind}
-                </span>
-              )}
-            </div>
-          )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <GitBranch className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Current: {activeBranch}</span>
+            {status && (status.ahead > 0 || status.behind > 0) && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                {status.ahead > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <ArrowUp className="w-3 h-3" />{status.ahead}
+                  </span>
+                )}
+                {status.behind > 0 && (
+                  <span className="flex items-center gap-0.5">
+                    <ArrowDown className="w-3 h-3" />{status.behind}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0"
+            onClick={() => refetch()}
+            disabled={isRefetching}
+            title="Refresh branches"
+          >
+            <RefreshCw className={cn('w-4 h-4', isRefetching && 'animate-spin')} />
+          </Button>
         </div>
 
         {isCreating ? (
@@ -159,7 +171,7 @@ export function BranchesTab({ repoId, currentBranch }: BranchesTabProps) {
         {branches?.branches && branches.branches.length > 0 ? (
           <div className="py-1">
             {branches.branches.map((branch) => {
-              const isCurrent = branch.name === activeBranch
+              const isCurrent = branch.name === activeBranch || branch.name === `remotes/${activeBranch}`
               const isRemote = branch.type === 'remote'
 
               return (
@@ -169,14 +181,18 @@ export function BranchesTab({ repoId, currentBranch }: BranchesTabProps) {
                     'flex items-center gap-2 px-3 py-2 w-full text-left hover:bg-accent/50 transition-colors',
                     isCurrent && 'bg-accent'
                   )}
-                  onClick={() => !isCurrent && switchBranchMutation.mutate(branch.name)}
-                  disabled={isCurrent || switchBranchMutation.isPending}
+                  onClick={() => !isCurrent && !isRemote && switchBranchMutation.mutate(branch.name)}
+                  disabled={isCurrent || switchBranchMutation.isPending || isRemote}
                 >
-                  <GitBranch className={cn(
-                    'w-4 h-4',
-                    isRemote ? GIT_UI_COLORS.remote : 'text-muted-foreground'
-                  )} />
+                  {isRemote ? (
+                    <Globe className="w-4 h-4 text-blue-500" />
+                  ) : (
+                    <GitBranch className={cn('w-4 h-4', isCurrent ? GIT_UI_COLORS.current : 'text-muted-foreground')} />
+                  )}
                   <span className="flex-1 text-sm truncate">{branch.name}</span>
+                  {branch.type === 'local' && !branch.upstream && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">local</span>
+                  )}
                   {isCurrent && <Check className={`w-4 h-4 ${GIT_UI_COLORS.current}`} />}
                   {switchBranchMutation.isPending && switchBranchMutation.variables === branch.name && (
                     <Loader2 className="w-4 h-4 animate-spin" />

@@ -26,16 +26,13 @@ export class GitBranchService {
     const fullPath = path.resolve(repo.fullPath)
     const env = this.gitAuthService.getGitEnvironment()
 
-    // Get current branch
     let currentBranch = ''
     try {
       const currentStdout = await executeCommand(['git', '-C', fullPath, 'rev-parse', '--abbrev-ref', 'HEAD'], { env, silent: true })
       currentBranch = currentStdout.trim()
     } catch {
-      // Handle detached HEAD or no branches
     }
 
-    // Get all branches with upstream info
     const stdout = await executeCommand(['git', '-C', fullPath, 'branch', '-vv', '-a'], { env, silent: true })
     const lines = stdout.split('\n').filter(line => line.trim())
 
@@ -48,50 +45,35 @@ export class GitBranchService {
 
       const isCurrent = trimmed.startsWith('*')
       const namePart = trimmed.replace(/^\*?\s*/, '')
-      
-      // Parse branch name and upstream info from "branchName [upstream: ahead 2, behind 1]" format
-      const match = namePart.match(/^([^\s]+)\s*(\[([^\]]+)\])?$/)
-      if (!match) continue
-
-      const name = match[1]
-      if (!name) continue
-      const upstreamInfo = match[3]
-
-      // Skip duplicates
-      if (seenNames.has(name)) continue
-      seenNames.add(name)
 
       const branch: GitBranch = {
-        name,
-        type: name.startsWith('origin/') ? 'remote' : 'local',
-        current: isCurrent && name === currentBranch
+        name: namePart,
+        type: namePart.startsWith('remotes/') ? 'remote' : 'local',
+        current: isCurrent && (namePart === currentBranch || namePart === `remotes/${currentBranch}`)
       }
 
-      // Parse upstream and ahead/behind info
-      if (upstreamInfo) {
-        const upstreamMatch = upstreamInfo.match(/^([^:]+):?\s*(ahead\s+(\d+))?,?\s*(behind\s+(\d+))?/)
-        if (upstreamMatch) {
-          branch.upstream = upstreamMatch[1]
-          branch.ahead = upstreamMatch[3] ? parseInt(upstreamMatch[3]) : 0
-          branch.behind = upstreamMatch[5] ? parseInt(upstreamMatch[5]) : 0
-        }
+      if (seenNames.has(branch.name)) continue
+      seenNames.add(branch.name)
+
+      const upstreamMatch = namePart.match(/\[([^:]+):?\s*(ahead\s+(\d+))?,?\s*(behind\s+(\d+))?\]/)
+      if (upstreamMatch) {
+        branch.upstream = upstreamMatch[1]
+        branch.ahead = upstreamMatch[3] ? parseInt(upstreamMatch[3]) : 0
+        branch.behind = upstreamMatch[5] ? parseInt(upstreamMatch[5]) : 0
       }
 
-      // Get ahead/behind for current branch if not in upstream info
       if (branch.current && (!branch.ahead || !branch.behind)) {
         try {
           const status = await this.getBranchStatus(repoId, database)
           branch.ahead = status.ahead
           branch.behind = status.behind
         } catch {
-          // Keep default values
         }
       }
 
       branches.push(branch)
     }
 
-    // Sort: local branches first, then remotes, with current branch first
     return branches.sort((a, b) => {
       if (a.current !== b.current) return b.current ? 1 : -1
       if (a.type !== b.type) return a.type === 'local' ? -1 : 1
