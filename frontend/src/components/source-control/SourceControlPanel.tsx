@@ -161,7 +161,7 @@ export function SourceControlPanel({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => handleGitAction(() => git.push.mutateAsync())}
+            onClick={() => handleGitAction(() => git.push.mutateAsync(undefined))}
             disabled={git.push.isPending}
             className="h-7 w-7 p-0"
             title="Push"
