@@ -248,16 +248,30 @@ export function SourceControlPanel({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         mobileFullscreen
+        hideCloseButton={isMobile}
         className={cn(
           'p-0 flex flex-col bg-card border-border',
-          isMobile ? 'h-[85vh]' : 'w-[90vw] sm:max-w-6xl h-[90vh]'
+          isMobile ? 'h-full' : 'w-[90vw] sm:max-w-6xl h-[90vh]'
         )}
       >
-        <DialogHeader className="px-4 py-3 border-b border-border flex-shrink-0">
+        <DialogHeader className={cn(
+          'px-4 py-3 border-b border-border flex-shrink-0',
+          isMobile && 'relative'
+        )}>
           <DialogTitle className="flex items-center gap-2">
             <GitBranch className="w-5 h-5" />
             Source Control
           </DialogTitle>
+          {isMobile && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 p-0"
+            >
+              <X className="h-6 w-6" />
+            </Button>
+          )}
         </DialogHeader>
         <div className="flex-1 overflow-hidden">
           {content}
