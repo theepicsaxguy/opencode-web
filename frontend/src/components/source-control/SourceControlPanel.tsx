@@ -16,11 +16,11 @@ import {
   GitBranch,
   FileCode,
   History,
-  Download,
   Upload,
-  ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  ArrowUpFromLine,
+  ArrowDownFromLine,
   X,
   ChevronDown,
   Check,
@@ -100,16 +100,16 @@ export function SourceControlPanel({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              {branches?.all?.map((branch) => (
+              {branches?.branches?.filter(b => b.type === 'local')?.map((branch) => (
                 <DropdownMenuItem
-                  key={branch}
-                  onClick={() => branch !== currentBranch && switchBranchMutation.mutate(branch)}
-                  disabled={branch === currentBranch || switchBranchMutation.isPending}
+                  key={branch.name}
+                  onClick={() => branch.name !== currentBranch && switchBranchMutation.mutate(branch.name)}
+                  disabled={branch.name === currentBranch || switchBranchMutation.isPending}
                   className="flex items-center gap-2"
                 >
                   <GitBranch className="w-4 h-4" />
-                  <span className="flex-1 truncate">{branch}</span>
-                  {branch === currentBranch && <Check className={`w-4 h-4 ${GIT_UI_COLORS.current}`} />}
+                  <span className="flex-1 truncate">{branch.name}</span>
+                  {branch.name === currentBranch && <Check className={`w-4 h-4 ${GIT_UI_COLORS.current}`} />}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -136,12 +136,12 @@ export function SourceControlPanel({
             onClick={() => handleGitAction(() => git.fetch.mutateAsync())}
             disabled={git.fetch.isPending}
             className="h-7 w-7 p-0"
-            title="Fetch"
+            title="Fetch from remote"
           >
             {git.fetch.isPending ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <Download className="w-4 h-4" />
+              <ArrowUpFromLine className="w-4 h-4" />
             )}
           </Button>
           <Button
@@ -155,7 +155,7 @@ export function SourceControlPanel({
             {git.pull.isPending ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <ArrowUpDown className="w-4 h-4" />
+              <ArrowDownFromLine className="w-4 h-4" />
             )}
           </Button>
           <Button

@@ -3,7 +3,7 @@ import type { Database } from 'bun:sqlite'
 import { executeCommand } from '../utils/process'
 import { getRepoById } from '../db/queries'
 import path from 'path'
-import { createNoPromptGitEnv, getCredentialForHost, getDefaultUsername, normalizeHost } from '../utils/git-auth'
+import { createSilentGitEnv, getCredentialForHost, getDefaultUsername, normalizeHost } from '../utils/git-auth'
 
 function isWriteOperation(gitCommand: string[]): boolean {
   const writeOps = ['push']
@@ -20,7 +20,7 @@ export class GitAuthService {
       // Get repo host
       const repo = getRepoById(database, repoId)
       if (!repo) {
-        return createNoPromptGitEnv()
+        return createSilentGitEnv()
       }
 
       const fullPath = path.resolve(repo.fullPath)
@@ -30,11 +30,11 @@ export class GitAuthService {
       // Find matching credential
       const credential = getCredentialForHost(gitCredentials, host)
       if (!credential) {
-        return createNoPromptGitEnv()
+        return createSilentGitEnv()
       }
 
       if (silent) {
-        return createNoPromptGitEnv()
+        return createSilentGitEnv()
       }
 
       // Create env with askpass script
@@ -46,7 +46,7 @@ export class GitAuthService {
         GIT_CONFIG_COUNT: '0'
       }
     } catch {
-      return createNoPromptGitEnv()
+      return createSilentGitEnv()
     }
   }
 }

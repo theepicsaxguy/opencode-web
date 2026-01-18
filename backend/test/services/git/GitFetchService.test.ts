@@ -34,7 +34,7 @@ vi.mock('../../../src/services/git/GitBranchService', () => ({
 
 vi.mock('../../../src/utils/git-auth', () => ({
   GitAuthService: vi.fn().mockImplementation(() => mockGitAuthService),
-  createNoPromptGitEnv: vi.fn(),
+  createSilentGitEnv: vi.fn(),
 }))
 
 vi.mock('../../../src/utils/process', () => ({

@@ -334,17 +334,17 @@ export function createRepoGitRoutes(database: Database) {
   app.post('/git/askpass', async (c) => {
     try {
       const body = await c.req.json()
-      const { prompt, cwd } = body
+      const { prompt, cwd, hostname } = body
 
       if (!prompt || !cwd) {
-        return c.json({ token: '' })
+        return c.json({})
       }
 
-      const token = await gitAskpassService.getCredential(prompt, cwd, database)
-      return c.json({ token })
+      const result = await gitAskpassService.getCredential(prompt, cwd, hostname || 'unknown', database)
+      return c.json(result)
     } catch (error: unknown) {
       logger.error('Failed to get askpass credential:', error)
-      return c.json({ token: '' })
+      return c.json({})
     }
   })
 

@@ -21,10 +21,10 @@ export function isGitHubHttpsUrl(repoUrl: string): boolean {
   }
 }
 
-export function createNoPromptGitEnv(): Record<string, string> {
+export function createSilentGitEnv(): Record<string, string> {
   return {
     GIT_TERMINAL_PROMPT: '0',
-    GIT_ASKPASS: ''
+    VSCODE_GIT_FETCH_SILENT: 'true'
   }
 }
 
@@ -53,11 +53,11 @@ export function normalizeHost(host: string): string {
 }
 
 export function createGitEnv(credentials: GitCredential[]): Record<string, string> {
-  const askpassPath = path.join(__dirname, 'git-askpass.ts')
+  const askpassPath = path.join(__dirname, 'askpass.js')
   const env: Record<string, string> = {
     GIT_TERMINAL_PROMPT: '0',
-    GIT_ASKPASS: `bun run ${askpassPath}`,
-    SSH_ASKPASS: `bun run ${askpassPath}`,
+    GIT_ASKPASS: askpassPath,
+    SSH_ASKPASS: askpassPath,
     GIT_CONFIG_COUNT: '0'
   }
   
@@ -218,7 +218,7 @@ import { getRepoById } from '../db/queries'
 import path from 'path'
 
 export class GitAuthService {
-  async getGitEnvironment(repoId: number, database: Database): Promise<Record<string, string>> {
+  async getGitEnvironment(repoId: number, database: Database, silent: boolean = false): Promise<Record<string, string>> {
     try {
       const settingsService = new SettingsService(database)
       const settings = settingsService.getSettings('default')
@@ -227,7 +227,7 @@ export class GitAuthService {
       // Get repo host
       const repo = getRepoById(database, repoId)
       if (!repo) {
-        return createNoPromptGitEnv()
+        return silent ? createSilentGitEnv() : {}
       }
 
       const fullPath = path.resolve(repo.fullPath)
@@ -237,22 +237,36 @@ export class GitAuthService {
       // Find matching credential
       const credential = getCredentialForHost(gitCredentials, host)
       if (!credential) {
-        return createNoPromptGitEnv()
+        return silent ? createSilentGitEnv() : {}
       }
 
-      // Create env with specific credential
+      // Create env with askpass for all operations
+      const askpassPath = path.join(__dirname, 'askpass.js')
+      const baseEnv: Record<string, string> = {
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ASKPASS: askpassPath,
+        SSH_ASKPASS: askpassPath,
+        GIT_CONFIG_COUNT: '0'
+      }
+
+      // Add silent flag if requested
+      if (silent) {
+        baseEnv.VSCODE_GIT_FETCH_SILENT = 'true'
+      }
+
+      // Add credential config
       const username = credential.username || getDefaultUsername(credential.host)
       const basicAuth = Buffer.from(`${username}:${credential.token}`, 'utf8').toString('base64')
       const normalizedHost = normalizeHost(credential.host)
 
       return {
-        GIT_TERMINAL_PROMPT: '0',
+        ...baseEnv,
         GIT_CONFIG_COUNT: '1',
         GIT_CONFIG_KEY_0: `http.${normalizedHost}.extraheader`,
         GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basicAuth}`
       }
     } catch {
-      return createNoPromptGitEnv()
+      return silent ? createSilentGitEnv() : {}
     }
   }
 }

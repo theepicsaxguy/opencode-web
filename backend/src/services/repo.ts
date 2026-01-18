@@ -5,7 +5,7 @@ import type { Database } from 'bun:sqlite'
 import type { Repo, CreateRepoInput } from '../types/repo'
 import { logger } from '../utils/logger'
 import { SettingsService } from './settings'
-import { createGitEnv, createNoPromptGitEnv } from '../utils/git-auth'
+import { createGitEnv, createSilentGitEnv } from '../utils/git-auth'
 import { getReposPath } from '@opencode-manager/shared/config/env'
 import path from 'path'
 
@@ -132,7 +132,7 @@ function getGitEnv(database: Database): Record<string, string> {
 
     return createGitEnv(gitCredentials)
   } catch {
-    return createNoPromptGitEnv()
+    return createSilentGitEnv()
   }
 }
 
@@ -319,7 +319,7 @@ export async function cloneRepo(
 
   let requiresAuth = false
   try {
-    const noAuthEnv = createNoPromptGitEnv()
+    const noAuthEnv = createSilentGitEnv()
     await executeCommand(['git', 'ls-remote', normalizedRepoUrl, 'HEAD'], { env: noAuthEnv, silent: true })
     requiresAuth = false
     logger.info(`Repository is public: ${normalizedRepoUrl}`)

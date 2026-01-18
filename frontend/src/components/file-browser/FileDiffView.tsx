@@ -67,7 +67,7 @@ const statusConfig: Record<GitFileStatusType, { icon: typeof FileText; color: st
 function DiffLineComponent({ line, showLineNumbers, onLineClick }: { line: DiffLine; showLineNumbers: boolean; onLineClick?: (lineNumber: number) => void }) {
   if (line.type === 'header') {
     return (
-      <div className="px-4 py-1 bg-muted/50 text-muted-foreground text-xs font-mono truncate">
+      <div className="px-4 py-1 bg-muted/50 text-muted-foreground text-xs font-mono truncate border-b border-border/30">
         {line.content}
       </div>
     )
@@ -75,7 +75,7 @@ function DiffLineComponent({ line, showLineNumbers, onLineClick }: { line: DiffL
 
   if (line.type === 'hunk') {
     return (
-      <div className="px-4 py-1 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-mono">
+      <div className="px-4 py-1 bg-accent/20 text-accent-foreground text-xs font-mono border-b border-border/20">
         {line.content}
       </div>
     )
@@ -88,9 +88,9 @@ function DiffLineComponent({ line, showLineNumbers, onLineClick }: { line: DiffL
       : ''
 
   const textClass = line.type === 'add'
-    ? 'text-emerald-600 dark:text-emerald-400'
+    ? 'text-emerald-700 dark:text-emerald-300'
     : line.type === 'remove'
-      ? 'text-rose-600 dark:text-rose-400'
+      ? 'text-rose-700 dark:text-rose-300'
     : 'text-foreground'
 
   const lineNumber = line.newLineNumber ?? line.oldLineNumber
@@ -99,14 +99,17 @@ function DiffLineComponent({ line, showLineNumbers, onLineClick }: { line: DiffL
   return (
     <div 
       className={cn(
-        'flex font-mono text-sm',
+        'flex font-mono text-sm border-l-2 transition-colors',
         bgClass,
-        isClickable && 'cursor-pointer hover:bg-accent/50 transition-colors'
+        line.type === 'add' && 'border-l-emerald-500',
+        line.type === 'remove' && 'border-l-rose-500',
+        line.type === 'context' && 'border-l-transparent',
+        isClickable && 'cursor-pointer hover:bg-accent/30'
       )}
       onClick={() => isClickable && lineNumber !== undefined && onLineClick(lineNumber)}
     >
       {showLineNumbers && (
-        <div className="flex-shrink-0 w-20 flex text-xs text-muted-foreground select-none">
+        <div className="flex-shrink-0 w-20 flex text-xs text-muted-foreground bg-muted/30 select-none">
           <span className="w-10 px-2 text-right border-r border-border/50">
             {line.oldLineNumber || ''}
           </span>
@@ -115,11 +118,11 @@ function DiffLineComponent({ line, showLineNumbers, onLineClick }: { line: DiffL
           </span>
         </div>
       )}
-      <div className="w-6 flex-shrink-0 flex items-center justify-center">
-        {line.type === 'add' && <Plus className="w-3 h-3 text-green-500" />}
-        {line.type === 'remove' && <Minus className="w-3 h-3 text-red-500" />}
+      <div className="w-6 flex-shrink-0 flex items-center justify-center bg-muted/20">
+        {line.type === 'add' && <Plus className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
+        {line.type === 'remove' && <Minus className="w-3 h-3 text-rose-600 dark:text-rose-400" />}
       </div>
-      <pre className={cn('flex-1 px-2 py-0.5 whitespace-pre-wrap break-all', textClass)}>
+      <pre className={cn('flex-1 px-2 py-0.5 whitespace-pre-wrap break-words', textClass)}>
         {line.content || ' '}
       </pre>
     </div>
@@ -206,17 +209,17 @@ export function FileDiffView({ repoId, filePath, onBack, onOpenFile, isMobile = 
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto min-h-0 ">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {diffData.isBinary ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
+          <div className="flex items-center justify-center h-full text-muted-foreground bg-muted/20">
             <p className="text-sm">Binary file - cannot display diff</p>
           </div>
         ) : !diffData.diff ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
+          <div className="flex items-center justify-center h-full text-muted-foreground bg-muted/20">
             <p className="text-sm">No changes to display</p>
           </div>
         ) : (
-          <div className="divide-y divide-border/30 pb-32">
+          <div className="border-t border-border/30">
             {diffLines.map((line, index) => (
               <DiffLineComponent 
                 key={index} 
