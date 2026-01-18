@@ -32,7 +32,7 @@ export class AskpassHandler implements IPCHandler {
       GIT_ASKPASS: path.join(scriptsDir, this.ipcServer ? 'askpass.sh' : 'askpass-empty.sh'),
       VSCODE_GIT_ASKPASS_NODE: process.execPath,
       VSCODE_GIT_ASKPASS_EXTRA_ARGS: '',
-      VSCODE_GIT_ASKPASS_MAIN: path.join(scriptsDir, 'askpass-main.js'),
+      VSCODE_GIT_ASKPASS_MAIN: path.join(scriptsDir, 'askpass-main.ts'),
     }
 
     if (this.ipcServer) {

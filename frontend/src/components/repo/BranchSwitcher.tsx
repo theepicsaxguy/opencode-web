@@ -33,7 +33,7 @@ export function BranchSwitcher({ repoId, currentBranch, isWorktree, repoUrl, cla
     staleTime: Infinity,
   });
 
-  const activeBranch = branches?.current ?? currentBranch;
+  const activeBranch = branches?.branches?.find(b => b.current)?.name ?? currentBranch;
 
   const handleDropdownOpenChange = useCallback((open: boolean) => {
     if (open && repoId) {
@@ -107,18 +107,18 @@ export function BranchSwitcher({ repoId, currentBranch, isWorktree, repoUrl, cla
                   <DropdownMenuItem disabled className="text-muted-foreground">
                     Loading branches...
                   </DropdownMenuItem>
-                ) : branches?.all && branches.all.length > 0 ? (
-                  branches.all.map((branch: string) => (
+                ) : branches?.branches && branches.branches.length > 0 ? (
+                  branches.branches.filter(b => b.type === 'local').map((branch) => (
                     <DropdownMenuItem
-                      key={branch}
-                      onClick={() => switchBranchMutation.mutate(branch)}
+                      key={branch.name}
+                      onClick={() => switchBranchMutation.mutate(branch.name)}
                       disabled={switchBranchMutation.isPending}
                       className="text-muted-foreground hover:text-foreground hover:bg-accent cursor-pointer"
                     >
                       <div className="flex items-center gap-2 w-full">
                         <GitBranch className="w-3 h-3" />
-                        <span className="flex-1">{branch}</span>
-                        {branch === activeBranch && <Check className="w-3 h-3 text-green-500" />}
+                        <span className="flex-1">{branch.name}</span>
+                        {branch.name === activeBranch && <Check className="w-3 h-3 text-green-500" />}
                       </div>
                     </DropdownMenuItem>
                   ))

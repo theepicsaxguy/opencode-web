@@ -78,7 +78,7 @@ export function BranchesTab({ repoId, currentBranch }: BranchesTabProps) {
     )
   }
 
-  const activeBranch = branches?.current || currentBranch
+  const activeBranch = branches?.branches?.find(b => b.current)?.name || currentBranch
 
   return (
     <div className="flex flex-col h-full">
@@ -156,29 +156,29 @@ export function BranchesTab({ repoId, currentBranch }: BranchesTabProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {branches?.all && branches.all.length > 0 ? (
+        {branches?.branches && branches.branches.length > 0 ? (
           <div className="py-1">
-            {branches.all.map((branch) => {
-              const isCurrent = branch === activeBranch
-              const isRemote = branch.startsWith('origin/')
+            {branches.branches.map((branch) => {
+              const isCurrent = branch.name === activeBranch
+              const isRemote = branch.type === 'remote'
 
               return (
                 <button
-                  key={branch}
+                  key={branch.name}
                   className={cn(
                     'flex items-center gap-2 px-3 py-2 w-full text-left hover:bg-accent/50 transition-colors',
                     isCurrent && 'bg-accent'
                   )}
-                  onClick={() => !isCurrent && switchBranchMutation.mutate(branch)}
+                  onClick={() => !isCurrent && switchBranchMutation.mutate(branch.name)}
                   disabled={isCurrent || switchBranchMutation.isPending}
                 >
                   <GitBranch className={cn(
                     'w-4 h-4',
                     isRemote ? GIT_UI_COLORS.remote : 'text-muted-foreground'
                   )} />
-                  <span className="flex-1 text-sm truncate">{branch}</span>
+                  <span className="flex-1 text-sm truncate">{branch.name}</span>
                   {isCurrent && <Check className={`w-4 h-4 ${GIT_UI_COLORS.current}`} />}
-                  {switchBranchMutation.isPending && switchBranchMutation.variables === branch && (
+                  {switchBranchMutation.isPending && switchBranchMutation.variables === branch.name && (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   )}
                 </button>

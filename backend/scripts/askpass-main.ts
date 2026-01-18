@@ -1,23 +1,39 @@
-const http = require('http')
-const fs = require('fs')
+import http from 'http'
+import fs from 'fs'
 
-function fatal(err) {
+interface AskpassRequest {
+  askpassType: 'https' | 'ssh'
+  argv: string[]
+}
+
+function fatal(err: unknown): never {
+  if (err instanceof Error) {
+    console.error(err.message)
+  } else if (typeof err === 'string') {
+    console.error(err)
+  }
   process.exit(1)
 }
 
-function main(argv) {
-  if (!process.env['VSCODE_GIT_ASKPASS_PIPE']) {
+function main(argv: string[]): void {
+  const output = process.env['VSCODE_GIT_ASKPASS_PIPE']
+  if (!output) {
     return fatal('Missing pipe')
   }
-  if (!process.env['VSCODE_GIT_ASKPASS_TYPE']) {
+
+  const askpassType = process.env['VSCODE_GIT_ASKPASS_TYPE']
+  if (!askpassType) {
     return fatal('Missing type')
   }
+
+  if (askpassType !== 'https' && askpassType !== 'ssh') {
+    return fatal(`Invalid type: ${askpassType}`)
+  }
+
   if (process.env['VSCODE_GIT_COMMAND'] === 'fetch' && process.env['VSCODE_GIT_FETCH_SILENT']) {
     return fatal('Skip silent fetch commands')
   }
 
-  const output = process.env['VSCODE_GIT_ASKPASS_PIPE']
-  const askpassType = process.env['VSCODE_GIT_ASKPASS_TYPE']
   const ipcHandlePath = process.env['VSCODE_GIT_IPC_HANDLE']
 
   if (!ipcHandlePath) {
@@ -25,7 +41,7 @@ function main(argv) {
     return process.exit(0)
   }
 
-  const opts = {
+  const opts: http.RequestOptions = {
     socketPath: ipcHandlePath,
     path: '/askpass',
     method: 'POST'
@@ -37,7 +53,7 @@ function main(argv) {
       return process.exit(1)
     }
 
-    const chunks = []
+    const chunks: Buffer[] = []
     res.on('data', d => chunks.push(d))
     res.on('end', () => {
       const result = JSON.parse(Buffer.concat(chunks).toString('utf8'))
@@ -51,7 +67,8 @@ function main(argv) {
     process.exit(1)
   })
 
-  req.write(JSON.stringify({ askpassType, argv }))
+  const requestPayload: AskpassRequest = { askpassType, argv }
+  req.write(JSON.stringify(requestPayload))
   req.end()
 }
 
