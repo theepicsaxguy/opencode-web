@@ -232,5 +232,5 @@ describe('useGit', () => {
 
       expect(toast.showToast.error).toHaveBeenCalledWith('Unstage failed')
     })
-    })
+  })
 })

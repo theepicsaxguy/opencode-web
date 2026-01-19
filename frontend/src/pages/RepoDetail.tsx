@@ -142,7 +142,7 @@ export function RepoDetail() {
   return (
     <div
       ref={pageRef}
-      className="h-dvh max-h-dvh overflow-hidden bg-linear-to-br from-background via-background to-background flex flex-col"
+      className="h-dvh max-h-dvh overflow-hidden bg-gradient-to-br from-background via-background to-background flex flex-col"
       style={swipeStyles}
     >
     <Header>

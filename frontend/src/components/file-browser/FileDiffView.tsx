@@ -182,7 +182,7 @@ function DiffLineComponent({
       }
     >
       {showLineNumbers && (
-        <div className="/sessflex-shrink-0 w-20 flex text-xs text-muted-foreground bg-muted/30 select-none">
+          <div className="flex-shrink-0 w-20 flex text-xs text-muted-foreground bg-muted/30 select-none">
           <span className="w-10 px-2 text-right border-r border-border/50">
             {line.oldLineNumber || ""}
           </span>

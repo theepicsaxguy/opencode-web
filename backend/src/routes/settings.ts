@@ -27,11 +27,6 @@ function compareVersions(v1: string, v2: string): number {
   return 0
 }
 
-function maskToken(token: string): string {
-  if (!token || token.length <= 8) return '*******'
-  return token.substring(0, 8) + '...'
-}
-
 const UpdateSettingsSchema = z.object({
   preferences: UserPreferencesSchema.partial(),
 })

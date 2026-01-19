@@ -13,14 +13,6 @@ export interface GitCommit {
   authorEmail: string
   date: string
   message: string
-}
-
-export interface GitCommit {
-  hash: string
-  authorName: string
-  authorEmail: string
-  date: string
-  message: string
   unpushed?: boolean
 }
 
