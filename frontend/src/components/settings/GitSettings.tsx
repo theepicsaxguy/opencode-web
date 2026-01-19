@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useSettings } from '@/hooks/useSettings'
-import { Loader2, Plus, Trash2, Save, Check, X, TestTube, ChevronDown, ChevronRight, User, Key, Pencil } from 'lucide-react'
+import { Loader2, Plus, Trash2, Save, ChevronDown, ChevronRight, User, Key, Pencil } from 'lucide-react'
 import { showToast } from '@/lib/toast'
 import { GitCredentialDialog } from './GitCredentialDialog'
-import { settingsApi } from '@/api/settings'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 import type { GitCredential, GitIdentity } from '@/api/types/settings'
 
 export function GitSettings() {
@@ -18,8 +16,6 @@ export function GitSettings() {
   const [hasChanges, setHasChanges] = useState(false)
   const [isCredentialDialogOpen, setIsCredentialDialogOpen] = useState(false)
   const [editingCredentialIndex, setEditingCredentialIndex] = useState<number | null>(null)
-  const [testingCredentialIndex, setTestingCredentialIndex] = useState<number | null>(null)
-  const [testResults, setTestResults] = useState<Record<number, { success: boolean; message?: string }>>({})
   const [identityExpanded, setIdentityExpanded] = useState(true)
   const [credentialsExpanded, setCredentialsExpanded] = useState(true)
 
@@ -61,65 +57,18 @@ export function GitSettings() {
 
     setGitCredentials(newCredentials)
     checkForChanges(newCredentials, gitIdentity)
-    clearTestResult(editingCredentialIndex ?? newCredentials.length - 1)
   }
 
   const removeCredential = (index: number) => {
     const newCredentials = gitCredentials.filter((_, i) => i !== index)
     setGitCredentials(newCredentials)
     checkForChanges(newCredentials, gitIdentity)
-    clearTestResult(index)
   }
 
   const updateIdentity = (field: keyof GitIdentity, value: string) => {
     const newIdentity = { ...gitIdentity, [field]: value }
     setGitIdentity(newIdentity)
     checkForChanges(gitCredentials, newIdentity)
-  }
-
-  const testCredential = async (index: number) => {
-    const credential = gitCredentials[index]
-    if (!credential) return
-
-    setTestingCredentialIndex(index)
-    try {
-      const result = await settingsApi.testGitCredential(credential)
-      setTestResults(prev => ({
-        ...prev,
-        [index]: {
-          success: result.success,
-          message: result.error
-        }
-      }))
-
-      if (result.success) {
-        if (result.maskedToken) {
-          const updatedCredentials = [...gitCredentials]
-          updatedCredentials[index] = {
-            ...credential,
-            token: result.maskedToken
-          }
-          setGitCredentials(updatedCredentials)
-        }
-        showToast.success(`Successfully connected to ${credential.host}`)
-      } else {
-        showToast.error(`Connection failed: ${result.error || 'Unknown error'}`)
-      }
-    } catch {
-      const errorMsg = 'Failed to test credential'
-      setTestResults(prev => ({ ...prev, [index]: { success: false, message: errorMsg } }))
-      showToast.error(errorMsg)
-    } finally {
-      setTestingCredentialIndex(null)
-    }
-  }
-
-  const clearTestResult = (index: number) => {
-    setTestResults(prev => {
-      const newResults = { ...prev }
-      delete newResults[index]
-      return newResults
-    })
   }
 
   const saveAll = async () => {
@@ -267,7 +216,6 @@ export function GitSettings() {
                       <tr>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Name</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground hidden sm:table-cell">Host</th>
-                        <th className="px-3 py-2 text-center font-medium text-muted-foreground">Status</th>
                         <th className="px-3 py-2 text-right font-medium text-muted-foreground">Actions</th>
                       </tr>
                     </thead>
@@ -283,44 +231,19 @@ export function GitSettings() {
                           <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">
                             {cred.host}
                           </td>
-                          <td className="px-3 py-2 text-center">
-                            {testResults[index] && (
-                              <span className={cn(
-                                'inline-flex items-center gap-1 text-xs',
-                                testResults[index].success ? 'text-green-500' : 'text-red-500'
-                              )}>
-                                {testResults[index].success ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                onClick={() => testCredential(index)}
-                                disabled={testingCredentialIndex === index}
-                                title="Test"
-                              >
-                                {testingCredentialIndex === index ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <TestTube className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0"
-                                onClick={() => openEditCredentialDialog(index)}
-                                disabled={isSaving}
-                                title="Edit"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
+                           <td className="px-3 py-2">
+                             <div className="flex items-center justify-end gap-1">
+                               <Button
+                                 type="button"
+                                 variant="ghost"
+                                 size="sm"
+                                 className="h-7 w-7 p-0"
+                                 onClick={() => openEditCredentialDialog(index)}
+                                 disabled={isSaving}
+                                 title="Edit"
+                               >
+                                 <Pencil className="h-3.5 w-3.5" />
+                               </Button>
                               <Button
                                 type="button"
                                 variant="ghost"

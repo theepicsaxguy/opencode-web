@@ -5,9 +5,7 @@ import type {
   OpenCodeConfig,
   OpenCodeConfigResponse,
   CreateOpenCodeConfigRequest,
-  UpdateOpenCodeConfigRequest,
-  TestCredentialRequest,
-  TestCredentialResponse
+  UpdateOpenCodeConfigRequest
 } from './types/settings'
 import { API_BASE_URL } from '@/config'
 
@@ -140,11 +138,6 @@ export const settingsApi = {
 
   updateAgentsMd: async (content: string): Promise<{ success: boolean }> => {
     const { data } = await axios.put(`${API_BASE_URL}/api/settings/agents-md`, { content })
-    return data
-  },
-
-  testGitCredential: async (credential: TestCredentialRequest): Promise<TestCredentialResponse> => {
-    const { data } = await axios.post(`${API_BASE_URL}/api/settings/test-credential`, credential)
     return data
   },
 }
