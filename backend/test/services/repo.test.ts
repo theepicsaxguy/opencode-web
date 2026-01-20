@@ -43,7 +43,6 @@ const mockGitAuthService = {
 describe('initLocalRepo', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.resetModules()
     executeCommand.mockResolvedValue('')
     ensureDirectoryExists.mockResolvedValue(undefined)
   })

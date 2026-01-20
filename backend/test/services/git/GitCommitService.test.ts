@@ -1,60 +1,55 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { GitCommitService } from '../../../src/services/git/GitCommitService'
+import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest'
 import type { Database } from 'bun:sqlite'
+import type { GitAuthService } from '../../../src/services/git-auth'
 
-const executeCommand = vi.fn()
-const getRepoById = vi.fn()
-const getGitEnvironment = vi.fn()
-const mockSpawn = vi.fn()
+vi.mock('bun:sqlite', () => ({
+  Database: vi.fn()
+}))
+
+vi.mock('../../../src/services/settings', () => ({
+  SettingsService: vi.fn().mockImplementation(() => ({
+    getSettings: vi.fn().mockReturnValue({
+      preferences: {
+        gitIdentity: null,
+        gitCredentials: [],
+      },
+    }),
+  })),
+}))
 
 vi.mock('../../../src/utils/process', () => ({
-  executeCommand,
+  executeCommand: vi.fn(),
 }))
 
 vi.mock('../../../src/db/queries', () => ({
-  getRepoById,
+  getRepoById: vi.fn(),
 }))
 
 vi.mock('../../../src/utils/git-auth', () => ({
-  GitAuthService: vi.fn().mockImplementation(() => ({
-    getGitEnvironment,
-  })),
+  resolveGitIdentity: vi.fn().mockResolvedValue(null),
+  createGitIdentityEnv: vi.fn().mockReturnValue({}),
   createSilentGitEnv: vi.fn(),
 }))
 
-vi.mock('child_process', () => ({
-  spawn: mockSpawn,
-}))
+import { GitCommitService } from '../../../src/services/git/GitCommitService'
+import { executeCommand } from '../../../src/utils/process'
+import { getRepoById } from '../../../src/db/queries'
+
+const executeCommandMock = executeCommand as MockedFunction<typeof executeCommand>
+const getRepoByIdMock = getRepoById as MockedFunction<typeof getRepoById>
 
 describe('GitCommitService', () => {
   let service: GitCommitService
   let database: Database
+  let mockGitAuthService: GitAuthService
 
   beforeEach(() => {
     vi.clearAllMocks()
     database = {} as Database
-    const { GitAuthService } = require('../../../src/utils/git-auth')
-    const gitAuthService = new GitAuthService()
-    service = new GitCommitService(gitAuthService)
-    getGitEnvironment.mockReturnValue({})
-
-    const mockProc = {
-      stdout: {
-        on: vi.fn((event, callback) => {
-          if (event === 'data') callback(Buffer.from(''))
-        }),
-      },
-      stderr: {
-        on: vi.fn((event, callback) => {
-          if (event === 'data') callback(Buffer.from(''))
-        }),
-      },
-      on: vi.fn((event, callback) => {
-        if (event === 'close') callback(0)
-      }),
-    }
-    mockSpawn.mockReturnValue(mockProc)
+    mockGitAuthService = {
+      getGitEnvironment: vi.fn().mockReturnValue({}),
+    } as unknown as GitAuthService
+    service = new GitCommitService(mockGitAuthService)
   })
 
   describe('commit', () => {
@@ -63,16 +58,17 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockResolvedValue('[main abc1234] Test commit\n 1 file changed')
 
       const result = await service.commit(1, 'Test commit', database)
 
-      expect(getRepoById).toHaveBeenCalledWith(database, 1)
-      expect(mockSpawn).toHaveBeenCalledWith('git', ['-C', mockRepo.fullPath, 'commit', '-m', 'Test commit'], {
-        shell: false,
-        env: expect.any(Object),
-      })
-      expect(result).toEqual({ stdout: '', stderr: '' })
+      expect(getRepoByIdMock).toHaveBeenCalledWith(database, 1)
+      expect(executeCommandMock).toHaveBeenCalledWith(
+        ['git', '-C', mockRepo.fullPath, 'commit', '-m', 'Test commit'],
+        { env: expect.any(Object) }
+      )
+      expect(result).toBe('[main abc1234] Test commit\n 1 file changed')
     })
 
     it('commits specific staged files', async () => {
@@ -80,19 +76,20 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockResolvedValue('[main abc1234] Commit specific files\n 2 files changed')
 
       const result = await service.commit(1, 'Commit specific files', database, ['file1.ts', 'file2.ts'])
 
-      expect(mockSpawn).toHaveBeenCalledWith('git', ['-C', mockRepo.fullPath, 'commit', '-m', 'Commit specific files', '--', 'file1.ts', 'file2.ts'], {
-        shell: false,
-        env: expect.any(Object),
-      })
-      expect(result).toEqual({ stdout: '', stderr: '' })
+      expect(executeCommandMock).toHaveBeenCalledWith(
+        ['git', '-C', mockRepo.fullPath, 'commit', '-m', 'Commit specific files', '--', 'file1.ts', 'file2.ts'],
+        { env: expect.any(Object) }
+      )
+      expect(result).toBe('[main abc1234] Commit specific files\n 2 files changed')
     })
 
     it('throws error when repository not found', async () => {
-      getRepoById.mockReturnValue(null)
+      getRepoByIdMock.mockReturnValue(null)
 
       await expect(service.commit(999, 'Test', database)).rejects.toThrow('Repository not found')
     })
@@ -102,26 +99,10 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockRejectedValue(new Error('Nothing to commit'))
 
-      const mockProc = {
-        stdout: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from(''))
-          }),
-        },
-        stderr: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from('Nothing to commit'))
-          }),
-        },
-        on: vi.fn((event, callback) => {
-          if (event === 'close') callback(1)
-        }),
-      }
-      mockSpawn.mockReturnValue(mockProc)
-
-      await expect(service.commit(1, 'Test', database)).rejects.toThrow('Failed to commit changes')
+      await expect(service.commit(1, 'Test', database)).rejects.toThrow('Nothing to commit')
     })
   })
 
@@ -131,27 +112,28 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockResolvedValue('')
 
       const result = await service.stageFiles(1, ['file1.ts', 'file2.ts'], database)
 
-      expect(getRepoById).toHaveBeenCalledWith(database, 1)
-      expect(mockSpawn).toHaveBeenCalledWith('git', ['-C', mockRepo.fullPath, 'add', '--', 'file1.ts', 'file2.ts'], {
-        shell: false,
-        env: expect.any(Object),
-      })
-      expect(result).toEqual({ stdout: '', stderr: '' })
+      expect(getRepoByIdMock).toHaveBeenCalledWith(database, 1)
+      expect(executeCommandMock).toHaveBeenCalledWith(
+        ['git', '-C', mockRepo.fullPath, 'add', '--', 'file1.ts', 'file2.ts'],
+        { env: expect.any(Object) }
+      )
+      expect(result).toBe('')
     })
 
     it('returns early when no files to stage', async () => {
       const result = await service.stageFiles(1, [], database)
 
-      expect(mockSpawn).not.toHaveBeenCalled()
-      expect(result).toEqual({ stdout: '', stderr: '' })
+      expect(executeCommandMock).not.toHaveBeenCalled()
+      expect(result).toBe('')
     })
 
     it('throws error when repository not found', async () => {
-      getRepoById.mockReturnValue(null)
+      getRepoByIdMock.mockReturnValue(null)
 
       await expect(service.stageFiles(999, ['file.ts'], database)).rejects.toThrow('Repository not found')
     })
@@ -161,26 +143,10 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockRejectedValue(new Error('Pathspec error'))
 
-      const mockProc = {
-        stdout: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from(''))
-          }),
-        },
-        stderr: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from('Pathspec error'))
-          }),
-        },
-        on: vi.fn((event, callback) => {
-          if (event === 'close') callback(1)
-        }),
-      }
-      mockSpawn.mockReturnValue(mockProc)
-
-      await expect(service.stageFiles(1, ['invalid.txt'], database)).rejects.toThrow('Failed to stage files')
+      await expect(service.stageFiles(1, ['invalid.txt'], database)).rejects.toThrow('Pathspec error')
     })
   })
 
@@ -190,27 +156,28 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockResolvedValue('')
 
       const result = await service.unstageFiles(1, ['file1.ts', 'file2.ts'], database)
 
-      expect(getRepoById).toHaveBeenCalledWith(database, 1)
-      expect(mockSpawn).toHaveBeenCalledWith('git', ['-C', mockRepo.fullPath, 'restore', '--staged', '--', 'file1.ts', 'file2.ts'], {
-        shell: false,
-        env: expect.any(Object),
-      })
-      expect(result).toEqual({ stdout: '', stderr: '' })
+      expect(getRepoByIdMock).toHaveBeenCalledWith(database, 1)
+      expect(executeCommandMock).toHaveBeenCalledWith(
+        ['git', '-C', mockRepo.fullPath, 'restore', '--staged', '--', 'file1.ts', 'file2.ts'],
+        { env: expect.any(Object) }
+      )
+      expect(result).toBe('')
     })
 
     it('returns early when no files to unstage', async () => {
       const result = await service.unstageFiles(1, [], database)
 
-      expect(mockSpawn).not.toHaveBeenCalled()
-      expect(result).toEqual({ stdout: '', stderr: '' })
+      expect(executeCommandMock).not.toHaveBeenCalled()
+      expect(result).toBe('')
     })
 
     it('throws error when repository not found', async () => {
-      getRepoById.mockReturnValue(null)
+      getRepoByIdMock.mockReturnValue(null)
 
       await expect(service.unstageFiles(999, ['file.ts'], database)).rejects.toThrow('Repository not found')
     })
@@ -220,30 +187,12 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockRejectedValue(new Error('Error unstaging'))
 
-      const mockProc = {
-        stdout: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from(''))
-          }),
-        },
-        stderr: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from('Error unstaging'))
-          }),
-        },
-        on: vi.fn((event, callback) => {
-          if (event === 'close') callback(1)
-        }),
-      }
-      mockSpawn.mockReturnValue(mockProc)
-
-      await expect(service.unstageFiles(1, ['file.ts'], database)).rejects.toThrow('Failed to unstage files')
+      await expect(service.unstageFiles(1, ['file.ts'], database)).rejects.toThrow('Error unstaging')
     })
   })
-
-
 
   describe('resetToCommit', () => {
     it('resets to specific commit', async () => {
@@ -251,20 +200,21 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockResolvedValue('HEAD is now at abc123')
 
       const result = await service.resetToCommit(1, 'abc123', database)
 
-      expect(getRepoById).toHaveBeenCalledWith(database, 1)
-      expect(mockSpawn).toHaveBeenCalledWith('git', ['-C', mockRepo.fullPath, 'reset', '--hard', 'abc123'], {
-        shell: false,
-        env: expect.any(Object),
-      })
-      expect(result).toEqual({ stdout: '', stderr: '' })
+      expect(getRepoByIdMock).toHaveBeenCalledWith(database, 1)
+      expect(executeCommandMock).toHaveBeenCalledWith(
+        ['git', '-C', mockRepo.fullPath, 'reset', '--hard', 'abc123'],
+        { env: expect.any(Object) }
+      )
+      expect(result).toBe('HEAD is now at abc123')
     })
 
     it('throws error when repository not found', async () => {
-      getRepoById.mockReturnValue(null)
+      getRepoByIdMock.mockReturnValue(null)
 
       await expect(service.resetToCommit(999, 'abc123', database)).rejects.toThrow('Repository not found')
     })
@@ -274,26 +224,10 @@ describe('GitCommitService', () => {
         id: 1,
         fullPath: '/path/to/repo',
       }
-      getRepoById.mockReturnValue(mockRepo)
+      getRepoByIdMock.mockReturnValue(mockRepo as any)
+      executeCommandMock.mockRejectedValue(new Error('Invalid commit hash'))
 
-      const mockProc = {
-        stdout: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from(''))
-          }),
-        },
-        stderr: {
-          on: vi.fn((event, callback) => {
-            if (event === 'data') callback(Buffer.from('Invalid commit hash'))
-          }),
-        },
-        on: vi.fn((event, callback) => {
-          if (event === 'close') callback(128)
-        }),
-      }
-      mockSpawn.mockReturnValue(mockProc)
-
-      await expect(service.resetToCommit(1, 'invalid', database)).rejects.toThrow('Failed to reset to commit')
+      await expect(service.resetToCommit(1, 'invalid', database)).rejects.toThrow('Invalid commit hash')
     })
   })
 })

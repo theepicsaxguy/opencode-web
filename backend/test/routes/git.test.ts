@@ -4,6 +4,7 @@ import type { Hono } from 'hono'
 import { getRepoById } from '../../src/db/queries'
 import type { Database } from 'bun:sqlite'
 import type { Repo } from '../../../shared/src/types'
+import type { GitAuthService } from '../../src/services/git-auth'
 
 vi.mock('bun:sqlite', () => ({
   Database: vi.fn(),
@@ -23,7 +24,6 @@ vi.mock('../../src/db/queries', () => ({
 
 const getRepoByIdMock = getRepoById as MockedFunction<typeof getRepoById>
 
-// Helper function to create a mock Repo object
 const createMockRepo = (overrides: Partial<Repo> = {}): Repo => ({
   id: 1,
   localPath: 'test-repo',
@@ -37,6 +37,7 @@ const createMockRepo = (overrides: Partial<Repo> = {}): Repo => ({
 describe('Git Routes', () => {
   let app: Hono
   let mockDatabase: Database
+  let mockGitAuthService: GitAuthService
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -54,7 +55,10 @@ describe('Git Routes', () => {
       inTransaction: vi.fn(),
       close: vi.fn(),
     } as unknown as Database
-    app = createRepoRoutes(mockDatabase)
+    mockGitAuthService = {
+      getGitEnvironment: vi.fn().mockReturnValue({}),
+    } as unknown as GitAuthService
+    app = createRepoRoutes(mockDatabase, mockGitAuthService)
   })
 
   describe('GET /:id/git/status', () => {

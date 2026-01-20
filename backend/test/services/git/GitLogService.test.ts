@@ -1,5 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from 'vitest'
+
+vi.mock('bun:sqlite', () => ({
+  Database: vi.fn()
+}))
+
+vi.mock('../../../src/services/settings', () => ({
+  SettingsService: vi.fn()
+}))
+
 import { GitLogService } from '../../../src/services/git/GitLogService'
 import type { Database } from 'bun:sqlite'
 import { executeCommand } from '../../../src/utils/process'
@@ -50,10 +59,12 @@ describe('GitLogService', () => {
         localPath: 'test-repo',
       }
       getRepoByIdMock.mockReturnValue(mockRepo as any)
-      executeCommandMock.mockResolvedValue(
-        'abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|First commit\n' +
-        'def456|Jane Smith|jane@example.com|2024-01-02 13:00:00 +0000|Second commit'
-      )
+      executeCommandMock
+        .mockResolvedValueOnce(
+          'abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|First commit\n' +
+          'def456|Jane Smith|jane@example.com|2024-01-02 13:00:00 +0000|Second commit'
+        )
+        .mockResolvedValueOnce('')
 
       const result = await service.getLog(1, database, 10)
 
@@ -69,6 +80,7 @@ describe('GitLogService', () => {
         authorEmail: 'john@example.com',
         date: '2024-01-01 12:00:00 +0000',
         message: 'First commit',
+        unpushed: false,
       })
       expect(result[1]).toEqual({
         hash: 'def456',
@@ -76,6 +88,7 @@ describe('GitLogService', () => {
         authorEmail: 'jane@example.com',
         date: '2024-01-02 13:00:00 +0000',
         message: 'Second commit',
+        unpushed: false,
       })
     })
 
@@ -85,7 +98,9 @@ describe('GitLogService', () => {
         localPath: 'test-repo',
       }
       getRepoByIdMock.mockReturnValue(mockRepo as any)
-      executeCommandMock.mockResolvedValue('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|First commit')
+      executeCommandMock
+        .mockResolvedValueOnce('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|First commit')
+        .mockResolvedValueOnce('')
 
       await service.getLog(1, database, 5)
 
@@ -101,7 +116,9 @@ describe('GitLogService', () => {
         localPath: 'test-repo',
       }
       getRepoByIdMock.mockReturnValue(mockRepo as any)
-      executeCommandMock.mockResolvedValue('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|')
+      executeCommandMock
+        .mockResolvedValueOnce('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|')
+        .mockResolvedValueOnce('')
 
       const result = await service.getLog(1, database, 10)
 
@@ -115,7 +132,9 @@ describe('GitLogService', () => {
         localPath: 'test-repo',
       }
       getRepoByIdMock.mockReturnValue(mockRepo as any)
-      executeCommandMock.mockResolvedValue('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|Multi|line commit')
+      executeCommandMock
+        .mockResolvedValueOnce('abc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|Multi|line commit')
+        .mockResolvedValueOnce('')
 
       const result = await service.getLog(1, database, 10)
 
@@ -129,7 +148,9 @@ describe('GitLogService', () => {
         localPath: 'test-repo',
       }
       getRepoByIdMock.mockReturnValue(mockRepo as any)
-      executeCommandMock.mockResolvedValue('')
+      executeCommandMock
+        .mockResolvedValueOnce('')
+        .mockResolvedValueOnce('')
 
       const result = await service.getLog(1, database, 10)
 
@@ -142,7 +163,9 @@ describe('GitLogService', () => {
         localPath: 'test-repo',
       }
       getRepoByIdMock.mockReturnValue(mockRepo as any)
-      executeCommandMock.mockResolvedValue('\n\nabc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|Test\n\n')
+      executeCommandMock
+        .mockResolvedValueOnce('\n\nabc123|John Doe|john@example.com|2024-01-01 12:00:00 +0000|Test\n\n')
+        .mockResolvedValueOnce('')
 
       const result = await service.getLog(1, database, 10)
 
@@ -156,7 +179,9 @@ describe('GitLogService', () => {
         localPath: 'test-repo',
       }
       getRepoByIdMock.mockReturnValue(mockRepo as any)
-      executeCommandMock.mockResolvedValue('|John Doe|john@example.com|2024-01-01 12:00:00 +0000|No hash')
+      executeCommandMock
+        .mockResolvedValueOnce('|John Doe|john@example.com|2024-01-01 12:00:00 +0000|No hash')
+        .mockResolvedValueOnce('')
 
       const result = await service.getLog(1, database, 10)
 

@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Database } from 'bun:sqlite'
 import type { GitAuthService } from '../../../src/services/git-auth'
 
+vi.mock('bun:sqlite', () => ({
+  Database: vi.fn()
+}))
+
+vi.mock('../../../src/services/settings', () => ({
+  SettingsService: vi.fn()
+}))
+
 vi.mock('../../../src/utils/process', () => ({
   executeCommand: vi.fn(),
 }))

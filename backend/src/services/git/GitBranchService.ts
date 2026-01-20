@@ -99,7 +99,7 @@ export class GitBranchService {
       const env = this.gitAuthService.getGitEnvironment()
 
       const stdout = await executeCommand(['git', '-C', fullPath, 'rev-list', '--left-right', '--count', 'HEAD...@{upstream}'], { env, silent: true })
-      const [behind, ahead] = stdout.trim().split(/\s+/).map(Number)
+      const [ahead, behind] = stdout.trim().split(/\s+/).map(Number)
 
       return { ahead: ahead || 0, behind: behind || 0 }
     } catch (error) {

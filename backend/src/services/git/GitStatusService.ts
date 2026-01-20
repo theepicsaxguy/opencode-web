@@ -52,7 +52,7 @@ export class GitStatusService {
   private async getBranchStatus(repoPath: string, env: Record<string, string> | undefined): Promise<{ ahead: number; behind: number }> {
     try {
       const stdout = await executeCommand(['git', '-C', repoPath, 'rev-list', '--left-right', '--count', 'HEAD...@{upstream}'], { env, silent: true })
-      const [behind, ahead] = stdout.trim().split(/\s+/).map(Number)
+      const [ahead, behind] = stdout.trim().split(/\s+/).map(Number)
 
       return { ahead: ahead || 0, behind: behind || 0 }
     } catch {
@@ -69,13 +69,21 @@ export class GitStatusService {
 
       const stagedStatus = line[0] as string
       const unstagedStatus = line[1] as string
-      const filePath = line.substring(3)
+      let filePath = line.substring(3)
+      let oldPath: string | undefined
+
+      if ((stagedStatus === 'R' || stagedStatus === 'C') && filePath.includes(' -> ')) {
+        const arrowIndex = filePath.indexOf(' -> ')
+        oldPath = filePath.substring(0, arrowIndex)
+        filePath = filePath.substring(arrowIndex + 4)
+      }
 
       if (stagedStatus !== ' ' && stagedStatus !== '?') {
         files.push({
           path: filePath,
           status: this.parseStatusCode(stagedStatus),
-          staged: true
+          staged: true,
+          ...(oldPath && { oldPath })
         })
       }
 
@@ -83,7 +91,8 @@ export class GitStatusService {
         files.push({
           path: filePath,
           status: this.parseStatusCode(unstagedStatus),
-          staged: false
+          staged: false,
+          ...(oldPath && { oldPath })
         })
       }
 
