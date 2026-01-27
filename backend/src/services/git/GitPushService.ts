@@ -1,7 +1,7 @@
 import { executeCommand } from '../../utils/process'
 import { GitAuthService } from '../git-auth'
 import { GitBranchService } from './GitBranchService'
-import { isNoUpstreamError } from '../../utils/git-errors'
+import { isNoUpstreamError, parseBranchNameFromError } from '../../utils/git-errors'
 import type { Database } from 'bun:sqlite'
 import * as db from '../../db/queries'
 import path from 'path'
@@ -25,14 +25,16 @@ export class GitPushService {
     const fullPath = path.resolve(repo.fullPath)
     const env = this.gitAuthService.getGitEnvironment()
 
-    // Try simple push first, then handle no-upstream errors
+    if (options.setUpstream) {
+      return await this.pushWithUpstream(repoId, fullPath, env)
+    }
+    
     try {
       const args = ['git', '-C', fullPath, 'push']
       return executeCommand(args, { env })
     } catch (error) {
-      if (isNoUpstreamError(error as Error) && !options.setUpstream) {
-        // Retry with --set-upstream to create remote branch
-        return await this.pushWithUpstream(repoId, fullPath, env, database)
+      if (isNoUpstreamError(error as Error)) {
+return await this.pushWithUpstream(repoId, fullPath, env)
       }
       throw error
     }
@@ -41,23 +43,25 @@ export class GitPushService {
   private async pushWithUpstream(
     repoId: number,
     fullPath: string,
-    env: Record<string, string>,
-    database: Database
+    env: Record<string, string>
   ): Promise<string> {
     let branchName: string | null = null
 
     try {
-      // Get current branch name
-      const branches = await this.branchService.getBranches(repoId, database)
-      const currentBranch = branches.find(b => b.current && b.type === 'local')
-      branchName = currentBranch?.name || null
-    } catch {
-      // If branch detection fails, try to extract from error message
-      // This is a fallback, ideally we want the current branch name
+      const result = await executeCommand(
+        ['git', '-C', fullPath, 'rev-parse', '--abbrev-ref', 'HEAD'],
+        { env }
+      )
+      branchName = result.trim()
+      if (branchName === 'HEAD') {
+        branchName = null
+      }
+    } catch (error) {
+      branchName = parseBranchNameFromError(error as Error)
     }
 
     if (!branchName) {
-      branchName = 'HEAD' // fallback
+      throw new Error('Unable to detect current branch. Ensure you are on a branch before pushing with --set-upstream.')
     }
 
     const args = ['git', '-C', fullPath, 'push', '--set-upstream', 'origin', branchName]
