@@ -3,11 +3,13 @@ import { logger } from '../utils/logger'
 
 interface PassphraseResponse {
   type: 'passphrase-response'
+  requestId: string
   passphrase: string
 }
 
 export class PassphraseHandler implements IPCHandler {
   private resolveMap = new Map<string, { resolve: (passphrase: string) => void; reject: (error: Error) => void }>()
+  private requestCounter = 0
 
   constructor(ipcServer: IPCServer | undefined) {
     if (ipcServer) {
@@ -20,10 +22,10 @@ export class PassphraseHandler implements IPCHandler {
 
   async handle(request: PassphraseResponse): Promise<string> {
     if (request.type === 'passphrase-response') {
-      const pending = this.resolveMap.get('default')
+      const pending = this.resolveMap.get(request.requestId)
       if (pending) {
         pending.resolve(request.passphrase)
-        this.resolveMap.delete('default')
+        this.resolveMap.delete(request.requestId)
       }
       return 'ack'
     }
@@ -32,11 +34,12 @@ export class PassphraseHandler implements IPCHandler {
 
   requestPassphrase(credentialName: string, host: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      const requestId = `default`
+      this.requestCounter++
+      const requestId = `passphrase-${Date.now()}-${this.requestCounter}`
 
       this.resolveMap.set(requestId, { resolve, reject })
 
-      logger.info(`Requesting passphrase for ${credentialName} (${host})`)
+      logger.info(`Requesting passphrase for ${credentialName} (${host}) - requestId: ${requestId}`)
 
       setTimeout(() => {
         if (this.resolveMap.has(requestId)) {

@@ -10,6 +10,20 @@ export interface GitCredential {
   passphrase?: string
 }
 
+export function isGitCredential(value: unknown): value is GitCredential {
+  if (!value || typeof value !== 'object') return false
+  const cred = value as Record<string, unknown>
+  return (
+    typeof cred.name === 'string' &&
+    typeof cred.host === 'string' &&
+    (cred.type === 'pat' || cred.type === 'ssh')
+  )
+}
+
+export function filterGitCredentials(credentials: unknown[]): GitCredential[] {
+  return credentials.filter(isGitCredential)
+}
+
 export function isGitHubHttpsUrl(repoUrl: string): boolean {
   try {
     const parsed = new URL(repoUrl)

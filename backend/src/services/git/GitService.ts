@@ -3,7 +3,7 @@ import { executeCommand } from '../../utils/process'
 import { logger } from '../../utils/logger'
 import { getErrorMessage } from '../../utils/error-utils'
 import { getRepoById } from '../../db/queries'
-import { resolveGitIdentity, createGitIdentityEnv, isSSHUrl } from '../../utils/git-auth'
+import { resolveGitIdentity, createGitIdentityEnv, isSSHUrl, filterGitCredentials } from '../../utils/git-auth'
 import { isNoUpstreamError, parseBranchNameFromError } from '../../utils/git-errors'
 import { SettingsService } from '../settings'
 import type { Database } from 'bun:sqlite'
@@ -198,7 +198,7 @@ export class GitService {
       const authEnv = this.gitAuthService.getGitEnvironment()
 
       const settings = this.settingsService.getSettings('default')
-      const gitCredentials = (settings.preferences.gitCredentials || []) as import('../../utils/git-auth').GitCredential[]
+      const gitCredentials = filterGitCredentials(settings.preferences.gitCredentials || [])
       const identity = await resolveGitIdentity(settings.preferences.gitIdentity, gitCredentials)
       const identityEnv = identity ? createGitIdentityEnv(identity) : {}
 
@@ -340,7 +340,7 @@ export class GitService {
         const filePath = parts[1]
         const oldPath = parts.length > 2 ? parts[2] : undefined
 
-        if (!filePath) continue
+        if (!filePath || !statusCode) continue
 
         let status: GitFileStatusType = 'modified'
         switch (statusCode.charAt(0)) {
@@ -361,10 +361,10 @@ export class GitService {
         let deletions = 0
         const statMatch = diffOutput.match(/(\d+) insertion|\d+ change[s]?.*?([\d,]+) insertion/)
         const delMatch = diffOutput.match(/(\d+) deletion/)
-        if (statMatch) {
+        if (statMatch && statMatch[1]) {
           additions = parseInt(statMatch[1].replace(/,/g, ''))
         }
-        if (delMatch) {
+        if (delMatch && delMatch[1]) {
           deletions = parseInt(delMatch[1].replace(/,/g, ''))
         }
 
@@ -392,7 +392,7 @@ export class GitService {
     }
   }
 
-  async getCommitDiff(repoId: number, hash: string, path: string, database: Database): Promise<FileDiffResponse> {
+  async getCommitDiff(repoId: number, hash: string, filePath: string, database: Database): Promise<FileDiffResponse> {
     try {
       const repo = getRepoById(database, repoId)
       if (!repo) {
@@ -403,15 +403,17 @@ export class GitService {
       const env = this.gitAuthService.getGitEnvironment(true)
 
       const diff = await executeCommand(
-        ['git', '-C', repoPath, 'show', '--no-stat', '--format=', `${hash} -- ${path}`],
+        ['git', '-C', repoPath, 'show', '--no-stat', '--format=', `${hash} -- ${filePath}`],
         { env }
       )
 
-      return this.parseDiffOutput(diff, 'modified', path)
+      return this.parseDiffOutput(diff, 'modified', filePath)
     } catch (error: unknown) {
       logger.error(`Failed to get commit diff for repo ${repoId}:`, error)
       throw new Error(`Failed to get commit diff: ${getErrorMessage(error)}`)
     }
+  }
+
   private async setupSSHIfNeeded(repoUrl: string | undefined, database: Database): Promise<void> {
     await this.gitAuthService.setupSSHForRepoUrl(repoUrl, database)
   }

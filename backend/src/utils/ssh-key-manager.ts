@@ -1,9 +1,9 @@
-/* eslint-disable no-empty */
 import { promises as fs } from 'fs'
 import { execFileSync } from 'child_process'
 import { randomBytes } from 'crypto'
 import { join } from 'path'
 import { getWorkspacePath } from '@opencode-manager/shared/config/env'
+import { logger } from './logger'
 
 const SSH_KEYS_DIR = join(getWorkspacePath(), '.ssh-keys')
 
@@ -47,7 +47,8 @@ async function validateSSHKey(keyPath: string): Promise<boolean> {
     }
     
     return false
-  } catch {
+  } catch (error) {
+    logger.debug('SSH key validation failed:', error)
     return false
   }
 }
@@ -63,17 +64,20 @@ export async function writeTemporarySSHKey(keyContent: string, identifier: strin
   
   const isValid = await validateSSHKey(keyPath)
   if (!isValid) {
-    await fs.unlink(keyPath).catch(() => {})
+    await fs.unlink(keyPath).catch((error) => {
+      logger.warn('Failed to cleanup invalid temporary SSH key:', error)
+    })
     throw new Error('Invalid SSH key format')
   }
-  
+
   return keyPath
 }
 
 export async function cleanupSSHKey(keyPath: string): Promise<void> {
   try {
     await fs.unlink(keyPath).catch(() => {})
-  } catch {
+  } catch (error) {
+    logger.warn('Failed to cleanup SSH key:', error)
   }
 }
 
@@ -112,7 +116,9 @@ export async function writePersistentSSHKey(keyContent: string, identifier: stri
 
   const isValid = await validateSSHKey(keyPath)
   if (!isValid) {
-    await fs.unlink(keyPath).catch(() => {})
+    await fs.unlink(keyPath).catch((error) => {
+      logger.warn('Failed to cleanup invalid persistent SSH key:', error)
+    })
     throw new Error('Invalid SSH key format')
   }
 
@@ -165,7 +171,8 @@ export async function writeSSHConfig(configPath: string, configContent: string):
 export async function cleanupAllSSHKeys(): Promise<void> {
   try {
     await fs.rm(SSH_KEYS_DIR, { recursive: true, force: true })
-  } catch {
+  } catch (error) {
+    logger.warn('Failed to cleanup all SSH keys:', error)
   }
 }
 
@@ -177,15 +184,19 @@ export async function cleanupPersistentSSHKeys(): Promise<void> {
     const persistentFiles = files.filter(f => f.startsWith('persistent-'))
 
     await Promise.all(
-      persistentFiles.map(f => fs.unlink(join(SSH_KEYS_DIR, f)).catch(() => {}))
+      persistentFiles.map(f => fs.unlink(join(SSH_KEYS_DIR, f)).catch((error) => {
+        logger.warn(`Failed to cleanup persistent SSH key file ${f}:`, error)
+      }))
     )
-  } catch {
+  } catch (error) {
+    logger.warn('Failed to read SSH keys directory:', error)
   }
 
   try {
     const configPath = join(getWorkspacePath(), 'config', 'ssh_config')
     await fs.unlink(configPath)
   } catch {
+    // Ignore error - config file may not exist
   }
 }
 
@@ -208,9 +219,10 @@ export function parseSSHHost(input: string): SSHConnectionInfo {
         port: parsed.port || defaultPort
       }
     } catch {
+      // URL parsing failed, continue with manual parsing
     }
   }
-  
+
   const cleaned = input.replace(/^[a-z]+:\/\//i, '')
   
   let user = defaultUser

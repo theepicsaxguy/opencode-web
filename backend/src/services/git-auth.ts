@@ -4,7 +4,7 @@ import { AskpassHandler } from '../ipc/askpassHandler'
 import { SSHHostKeyHandler } from '../ipc/sshHostKeyHandler'
 import { writeTemporarySSHKey, buildSSHCommand, buildSSHCommandWithKnownHosts, cleanupSSHKey, parseSSHHost } from '../utils/ssh-key-manager'
 import { decryptSecret } from '../utils/crypto'
-import { isSSHUrl, extractHostFromSSHUrl, getSSHCredentialsForHost, type GitCredential } from '../utils/git-auth'
+import { isSSHUrl, extractHostFromSSHUrl, getSSHCredentialsForHost, filterGitCredentials, type GitCredential } from '../utils/git-auth'
 import { logger } from '../utils/logger'
 import { SettingsService } from './settings'
 
@@ -97,7 +97,7 @@ export class GitAuthService {
 
     const settingsService = new SettingsService(database)
     const settings = settingsService.getSettings('default')
-    const gitCredentials = (settings.preferences.gitCredentials || []) as GitCredential[]
+    const gitCredentials = filterGitCredentials(settings.preferences.gitCredentials || [])
     const sshCredentials = getSSHCredentialsForHost(gitCredentials, sshHost)
 
     if (sshCredentials.length > 0 && sshCredentials[0]) {
