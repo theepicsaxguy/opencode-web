@@ -12,6 +12,7 @@ import {
   UserPreferencesSchema,
   OpenCodeConfigSchema,
 } from '../types/settings'
+import type { GitCredential } from '@opencode-manager/shared'
 import { logger } from '../utils/logger'
 import { opencodeServerManager } from '../services/opencode-single-server'
 import { DEFAULT_AGENTS_MD } from '../constants'
@@ -125,6 +126,8 @@ const ConnectMcpDirectorySchema = z.object({
   directory: z.string().min(1),
 })
 
+const McpAuthDirectorySchema = ConnectMcpDirectorySchema
+
 const TestSSHConnectionSchema = z.object({
   host: z.string().min(1),
   sshPrivateKey: z.string().min(1),
@@ -162,18 +165,18 @@ export function createSettingsRoutes(db: Database) {
 
       if (validated.preferences.gitCredentials) {
         const validations = await Promise.all(
-          validated.preferences.gitCredentials.map(async (cred: Record<string, unknown>) => {
+          validated.preferences.gitCredentials.map(async (cred: GitCredential) => {
             if (cred.type === 'ssh' && cred.sshPrivateKey) {
-              const validation = await validateSSHPrivateKey(cred.sshPrivateKey as string)
+              const validation = await validateSSHPrivateKey(cred.sshPrivateKey)
               if (!validation.valid) {
                 throw new Error(`Invalid SSH key for credential '${cred.name}': ${validation.error}`)
               }
 
-              const result: Record<string, unknown> = {
+              const result: GitCredential = {
                 ...cred,
-                sshPrivateKeyEncrypted: encryptSecret(cred.sshPrivateKey as string),
+                sshPrivateKeyEncrypted: encryptSecret(cred.sshPrivateKey),
                 hasPassphrase: validation.hasPassphrase,
-                passphrase: cred.passphrase ? encryptSecret(cred.passphrase as string) : undefined,
+                passphrase: cred.passphrase ? encryptSecret(cred.passphrase) : undefined,
               }
               delete result.sshPrivateKey
               return result
@@ -1006,12 +1009,12 @@ export function createSettingsRoutes(db: Database) {
     try {
       const serverName = c.req.param('name')
       const body = await c.req.json()
-      const { directory } = ConnectMcpDirectorySchema.parse(body)
+      const { directory } = McpAuthDirectorySchema.parse(body)
       
       const response = await proxyToOpenCodeWithDirectory(
         `/mcp/${encodeURIComponent(serverName)}/auth/authenticate`,
         'POST',
-        directory
+        directory,
       )
       
       if (!response.ok) {

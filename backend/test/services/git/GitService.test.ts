@@ -29,6 +29,7 @@ vi.mock('../../../src/utils/git-auth', () => ({
   resolveGitIdentity: vi.fn().mockResolvedValue(null),
   createGitIdentityEnv: vi.fn().mockReturnValue({}),
   createSilentGitEnv: vi.fn(),
+  filterGitCredentials: vi.fn().mockReturnValue([]),
 }))
 
 vi.mock('../../../src/utils/git-errors', () => ({
@@ -625,10 +626,10 @@ describe('GitService', () => {
       const mockRepo = {
         id: 1,
         fullPath: '/path/to/repo',
-        localPath: 'repo',
+        localPath: '/path/to/repo',
         defaultBranch: 'main',
         cloneStatus: 'ready' as const,
-        clonedAt: Date.now(),
+        clonedAt: 123456,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
       executeCommandMock.mockResolvedValue('Everything up-to-date')
@@ -647,10 +648,10 @@ describe('GitService', () => {
       const mockRepo = {
         id: 1,
         fullPath: '/path/to/repo',
-        localPath: 'repo',
+        localPath: '/path/to/repo',
         defaultBranch: 'main',
         cloneStatus: 'ready' as const,
-        clonedAt: Date.now(),
+        clonedAt: 123456,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
       executeCommandMock.mockResolvedValueOnce('main\n').mockResolvedValueOnce('')
@@ -670,10 +671,10 @@ describe('GitService', () => {
       const mockRepo = {
         id: 1,
         fullPath: '/path/to/repo',
-        localPath: 'repo',
+        localPath: '/path/to/repo',
         defaultBranch: 'main',
         cloneStatus: 'ready' as const,
-        clonedAt: Date.now(),
+        clonedAt: 123456,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
       executeCommandMock.mockResolvedValue('')
@@ -689,10 +690,10 @@ describe('GitService', () => {
       const mockRepo = {
         id: 1,
         fullPath: '/path/to/repo',
-        localPath: 'repo',
+        localPath: '/path/to/repo',
         defaultBranch: 'main',
         cloneStatus: 'ready' as const,
-        clonedAt: Date.now(),
+        clonedAt: 123456,
       }
       getRepoByIdMock.mockReturnValue(mockRepo)
       executeCommandMock.mockResolvedValue('')

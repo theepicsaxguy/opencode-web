@@ -1,18 +1,8 @@
-export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
-  if (!("serviceWorker" in navigator)) return null;
+import "../sw?worker";
 
-  try {
-    const registration = await navigator.serviceWorker.register("/sw.js", {
-      scope: "/",
-      type: "module",
-    });
-
-    registration.update().catch(() => {});
-
-    return registration;
-  } catch {
-    return null;
-  }
+export function registerServiceWorker(): void {
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
 }
 
 export async function getServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
