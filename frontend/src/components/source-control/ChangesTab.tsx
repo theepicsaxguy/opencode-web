@@ -43,6 +43,10 @@ export function ChangesTab({ repoId, onFileSelect, selectedFile, isMobile }: Cha
     handleGitAction(() => git.unstageFiles.mutateAsync(paths))
   }
 
+  const handleDiscard = (paths: string[], staged: boolean) => {
+    handleGitAction(() => git.discardFiles.mutateAsync({ paths, staged }))
+  }
+
   const handleCommit = () => {
     handleGitAction(async () => {
       await git.commit.mutateAsync({ message: commitMessage.trim() })

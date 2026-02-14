@@ -81,7 +81,8 @@ export class SSHHostKeyHandler implements IPCHandler {
       }
 
       logger.info(`Broadcasting SSH host key request: ${requestId} for host=${hostPort}`)
-      broadcastSSHHostKeyRequest({ ...hostKeyRequest, requestId: hostKeyRequest.id, action: 'verify' })
+      const { id: requestIdBroadcast, ...rest } = hostKeyRequest
+      broadcastSSHHostKeyRequest({ ...rest, requestId: requestIdBroadcast, action: 'verify' })
 
       return new Promise<boolean>((resolve) => {
         const timeout = setTimeout(() => {

@@ -184,7 +184,7 @@ export function createSettingsRoutes(db: Database) {
             return cred
           })
         )
-        validated.preferences.gitCredentials = validations as unknown as GitCredential[]
+        validated.preferences.gitCredentials = validations
       }
 
       const currentSettings = settingsService.getSettings(userId)
