@@ -10,7 +10,7 @@ import { RepoMcpDialog } from "@/components/repo/RepoMcpDialog";
 import { SourceControlPanel } from "@/components/source-control";
 import { useCreateSession } from "@/hooks/useOpenCode";
 import { useSSE } from "@/hooks/useSSE";
-import { OPENCODE_API_ENDPOINT, API_BASE_URL } from "@/config";
+import { OPENCODE_API_ENDPOINT } from "@/config";
 import { useSwipeBack } from "@/hooks/useMobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,12 +27,13 @@ import { Plug, FolderOpen, Plus, GitBranch, Loader2, GitCommitHorizontal, Shield
 import { PendingActionsGroup } from "@/components/notifications/PendingActionsGroup";
 import { showToast } from "@/lib/toast";
 import { invalidateConfigCaches } from "@/lib/queryInvalidation";
+import { getRepoDisplayName } from "@/lib/utils";
 
 export function RepoDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const repoId = parseInt(id || "0");
+  const repoId = Number(id) || 0;
   const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
   const [switchConfigOpen, setSwitchConfigOpen] = useState(false);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
@@ -56,15 +57,6 @@ export function RepoDetail() {
     queryKey: ["repo", repoId],
     queryFn: () => getRepo(repoId),
     enabled: !!repoId,
-  });
-
-  const { data: settings } = useQuery({
-    queryKey: ["opencode-config"],
-    queryFn: async () => {
-      const response = await fetch(`${API_BASE_URL}/api/settings/opencode-configs/default`);
-      if (!response.ok) throw new Error("Failed to fetch config");
-      return response.json();
-    },
   });
 
   const opcodeUrl = OPENCODE_API_ENDPOINT;
@@ -132,9 +124,7 @@ export function RepoDetail() {
     );
   }
 
-  const repoName = repo.repoUrl
-    ? repo.repoUrl.split("/").pop()?.replace(".git", "") || "Repository"
-    : repo.localPath || "Local Repository";
+  const repoName = getRepoDisplayName(repo.repoUrl, repo.localPath);
   const branchToDisplay = repo.currentBranch || repo.branch;
   const displayName = branchToDisplay ? `${repoName} (${branchToDisplay})` : repoName;
   const currentBranch = repo.currentBranch || repo.branch || "main";
@@ -244,7 +234,6 @@ export function RepoDetail() {
       <RepoMcpDialog
         open={mcpDialogOpen}
         onOpenChange={setMcpDialogOpen}
-        config={settings}
         directory={repoDirectory}
       />
 

@@ -8,7 +8,7 @@ const KEY_LENGTH = 32
 function deriveKey(): Buffer {
   const secret = ENV.AUTH.SECRET
   if (!secret) {
-    throw new Error('AUTH_SECRET environment variable is required')
+    throw new Error('AUTH_SECRET must be configured for encryption')
   }
   return scryptSync(secret, ENCRYPTION_KEY_SALT, KEY_LENGTH)
 }

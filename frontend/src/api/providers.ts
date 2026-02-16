@@ -19,7 +19,7 @@ export interface OpenCodeModel {
   cost: {
     input: number;
     output: number;
-    cache: {
+    cache?: {
       read: number;
       write: number;
     };
@@ -171,8 +171,8 @@ async function getProvidersFromOpenCodeServer(): Promise<{ providers: Provider[]
             cost: {
               input: openCodeModel.cost.input,
               output: openCodeModel.cost.output,
-              cache_read: openCodeModel.cost.cache.read,
-              cache_write: openCodeModel.cost.cache.write,
+              cache_read: openCodeModel.cost.cache?.read ?? 0,
+              cache_write: openCodeModel.cost.cache?.write ?? 0,
             },
             limit: {
               context: openCodeModel.limit.context,
@@ -205,8 +205,8 @@ async function getProvidersFromOpenCodeServer(): Promise<{ providers: Provider[]
 
       return { providers, connected: response.connected || [] };
     }
-  } catch (error) {
-    console.warn("Failed to load providers from OpenCode server", error);
+  } catch {
+    // Silently return empty providers on failure - graceful degradation
   }
 
   return { providers: [], connected: [] };
@@ -258,8 +258,8 @@ async function getConfiguredProviders(connectedIds: Set<string>): Promise<Provid
     }
 
     return result;
-  } catch (error) {
-    console.warn("Failed to load configured providers", error);
+  } catch {
+    // Silently return empty providers on failure - graceful degradation
     return [];
   }
 }

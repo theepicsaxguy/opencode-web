@@ -10,7 +10,7 @@ import { createIPCServer, type IPCServer } from './ipc/ipcServer'
 import { GitAuthService } from './services/git-auth'
 import { createSettingsRoutes } from './routes/settings'
 import { createHealthRoutes } from './routes/health'
-import { createTTSRoutes, cleanupExpiredCache } from './routes/tts'
+import { createTTSRoutes, cleanupExpiredCache } from './routes/tts';
 import { createSTTRoutes } from './routes/stt'
 import { createFileRoutes } from './routes/files'
 import { createProvidersRoutes } from './routes/providers'
@@ -27,7 +27,6 @@ import { sseAggregator } from './services/sse-aggregator'
 import { ensureDirectoryExists, writeFileContent, fileExists, readFileContent } from './services/file-operations'
 import { SettingsService } from './services/settings'
 import { opencodeServerManager } from './services/opencode-single-server'
-import { cleanupOrphanedDirectories } from './services/repo'
 import { proxyRequest, proxyMcpAuthStart, proxyMcpAuthAuthenticate } from './services/proxy'
 import { NotificationService } from './services/notification'
 import { logger } from './utils/logger'
@@ -181,9 +180,6 @@ try {
   await ensureDirectoryExists(getConfigPath())
   logger.info('Workspace directories initialized')
 
-  await cleanupOrphanedDirectories(db)
-  logger.info('Orphaned directory cleanup completed')
-
   await cleanupExpiredCache()
 
   await ensureDefaultConfigExists()
@@ -193,7 +189,7 @@ try {
   settingsService.initializeLastKnownGoodConfig()
 
   ipcServer = await createIPCServer(process.env.STORAGE_PATH || undefined)
-  gitAuthService.initialize(ipcServer, db)
+  await gitAuthService.initialize(ipcServer, db)
   logger.info(`Git IPC server running at ${ipcServer.ipcHandlePath}`)
 
   opencodeServerManager.setDatabase(db)
@@ -344,7 +340,7 @@ const shutdown = async (signal: string) => {
     sseAggregator.shutdown()
     logger.info('SSE Aggregator stopped')
     if (ipcServer) {
-      ipcServer.dispose()
+      await ipcServer.dispose()
       logger.info('Git IPC server stopped')
     }
     await opencodeServerManager.stop()
