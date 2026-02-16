@@ -1,3 +1,6 @@
+
+import { handleApiError } from '@opencode-manager/shared'
+
 import { FetchError } from '@opencode-manager/shared'
 import type { ApiErrorResponse } from '@opencode-manager/shared'
 
@@ -98,4 +101,4 @@ async function fetchWrapperBlob(
   return response.blob()
 }
 
-export { fetchWrapper, fetchWrapperText, fetchWrapperVoid, fetchWrapperBlob }
+export { fetchWrapper, fetchWrapperText, fetchWrapperVoid, fetchWrapperBlob, handleApiError }

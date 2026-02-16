@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "@/config"
-import { fetchWrapper, FetchError } from "./fetchWrapper"
+import { fetchWrapper } from './fetchWrapper'
+import { handleApiError } from '@opencode-manager/shared'
+
 
 export interface OAuthAuthorizeResponse {
   url: string
@@ -21,12 +23,6 @@ export interface ProviderAuthMethods {
   [providerId: string]: ProviderAuthMethod[]
 }
 
-function handleApiError(error: unknown, context: string): never {
-  if (error instanceof FetchError) {
-    throw new Error(`${context}: ${error.message}`)
-  }
-  throw error
-}
 
 export const oauthApi = {
   authorize: async (providerId: string, method: number): Promise<OAuthAuthorizeResponse> => {
@@ -39,6 +35,7 @@ export const oauthApi = {
     } catch (error) {
       handleApiError(error, "OAuth authorization failed")
     }
+    throw new Error('OAuth authorization failed')
   },
 
   callback: async (providerId: string, request: OAuthCallbackRequest): Promise<boolean> => {
@@ -51,6 +48,7 @@ export const oauthApi = {
     } catch (error) {
       handleApiError(error, "OAuth callback failed")
     }
+    throw new Error('OAuth callback failed')
   },
 
   getAuthMethods: async (): Promise<ProviderAuthMethods> => {
@@ -62,5 +60,6 @@ export const oauthApi = {
     } catch (error) {
       handleApiError(error, "Failed to get provider auth methods")
     }
+    throw new Error('Failed to get provider auth methods')
   },
 }
