@@ -951,7 +951,7 @@ describe('GitService', () => {
       getRepoByIdMock.mockReturnValue(mockRepo as any)
       executeCommandMock.mockImplementation((args) => {
         if (args.includes('log') && !args.includes('--not')) {
-          return Promise.resolve('abc123|John Doe|john@example.com|1609459200|Initial commit')
+          return Promise.resolve('abc123\x00John Doe\x00john@example.com\x001609459200\x00Initial commit')
         }
         if (args.includes('show') && args.includes('--name-status')) {
           return Promise.resolve('A\tfile1.ts\nM\tfile2.ts\nD\tfile3.ts\n')
@@ -1003,7 +1003,7 @@ describe('GitService', () => {
       getRepoByIdMock.mockReturnValue(mockRepo as any)
       executeCommandMock.mockImplementation((args) => {
         if (args.includes('log') && !args.includes('--not')) {
-          return Promise.resolve('abc123|John Doe|john@example.com|1609459200|Rename file')
+          return Promise.resolve('abc123\x00John Doe\x00john@example.com\x001609459200\x00Rename file')
         }
         if (args.includes('show') && args.includes('--name-status')) {
           return Promise.resolve('R\told.ts\tnew.ts\n')
@@ -1037,7 +1037,7 @@ describe('GitService', () => {
       getRepoByIdMock.mockReturnValue(mockRepo as any)
       executeCommandMock.mockImplementation((args) => {
         if (args.includes('log') && !args.includes('--not')) {
-          return Promise.resolve('abc123|John Doe|john@example.com|1609459200|Copy file')
+          return Promise.resolve('abc123\x00John Doe\x00john@example.com\x001609459200\x00Copy file')
         }
         if (args.includes('show') && args.includes('--name-status')) {
           return Promise.resolve('C\toriginal.ts\tcopy.ts\n')
@@ -1071,7 +1071,7 @@ describe('GitService', () => {
       getRepoByIdMock.mockReturnValue(mockRepo as any)
       executeCommandMock.mockImplementation((args) => {
         if (args.includes('log') && !args.includes('--not')) {
-          return Promise.resolve('abc123|John Doe|john@example.com|1609459200|Empty commit')
+          return Promise.resolve('abc123\x00John Doe\x00john@example.com\x001609459200\x00Empty commit')
         }
         if (args.includes('show') && args.includes('--name-status')) {
           return Promise.resolve('')
@@ -1117,7 +1117,7 @@ describe('GitService', () => {
       getRepoByIdMock.mockReturnValue(mockRepo as any)
       executeCommandMock.mockImplementation((args) => {
         if (args.includes('log') && !args.includes('--not')) {
-          return Promise.resolve('abc123|John Doe|john@example.com|1609459200|Local commit')
+          return Promise.resolve('abc123\x00John Doe\x00john@example.com\x001609459200\x00Local commit')
         }
         if (args.includes('show') && args.includes('--name-status')) {
           return Promise.resolve('M\tfile.ts\n')
@@ -1144,7 +1144,7 @@ describe('GitService', () => {
       getRepoByIdMock.mockReturnValue(mockRepo as any)
       executeCommandMock.mockImplementation((args) => {
         if (args.includes('log') && !args.includes('--not')) {
-          return Promise.resolve('abc123|John Doe|john@example.com|1609459200|Fix: merge|conflict|handling')
+          return Promise.resolve('abc123\x00John Doe\x00john@example.com\x001609459200\x00Fix: merge|conflict|handling')
         }
         if (args.includes('show') && args.includes('--name-status')) {
           return Promise.resolve('')

@@ -332,6 +332,15 @@ export class GitService {
     }
   }
 
+  private normalizeRenamePath(path: string): string {
+    const renamePattern = /\{[^=]+=>\s*([^}]+)\}/
+    let normalized = path
+    while (renamePattern.test(normalized)) {
+      normalized = normalized.replace(renamePattern, '$1')
+    }
+    return normalized.trim()
+  }
+
   private parseNumstatOutput(output: string): Map<string, { additions: number; deletions: number }> {
     const map = new Map<string, { additions: number; deletions: number }>()
     const lines = output.trim().split('\n')
@@ -344,13 +353,14 @@ export class GitService {
         const additions = parts[0]
         const deletions = parts[1]
         const filePath = parts.slice(2).join('\t')
+        const normalizedPath = this.normalizeRenamePath(filePath)
 
         if (
           additions?.match(/^\d+$/) &&
           deletions?.match(/^\d+$/) &&
-          filePath
+          normalizedPath
         ) {
-          map.set(filePath, {
+          map.set(normalizedPath, {
             additions: parseInt(additions, 10),
             deletions: parseInt(deletions, 10)
           })
@@ -376,8 +386,8 @@ export class GitService {
         const statusCode = parts[0]
         const fromPath = parts[1] || ''
         const toPath = parts[2] || parts[1] || ''
-        const isRename = statusCode === 'R'
-        const isCopy = statusCode === 'C'
+        const isRename = statusCode.startsWith('R')
+        const isCopy = statusCode.startsWith('C')
 
         let status: GitFileStatusType = 'modified'
         switch (statusCode.charAt(0)) {
@@ -426,7 +436,7 @@ export class GitService {
       const env = this.gitAuthService.getGitEnvironment(true)
 
       const commitOutput = await executeCommand(
-        ['git', '-C', repoPath, 'log', '-1', '--format=%H|%an|%ae|%at|%s', hash],
+        ['git', '-C', repoPath, 'log', '-1', '--format=%H%x00%an%x00%ae%x00%at%x00%B', hash],
         { env }
       )
 
@@ -434,21 +444,20 @@ export class GitService {
         return null
       }
 
-      const parts = commitOutput.trim().split('|')
-      const [commitHash, authorName, authorEmail, timestamp, ...messageParts] = parts
-      const message = messageParts.join('|')
+      const parts = commitOutput.trim().split('\0')
+      const [commitHash, authorName, authorEmail, timestamp, message] = parts
 
       if (!commitHash) {
         return null
       }
 
       const filesOutput = await executeCommand(
-        ['git', '-C', repoPath, 'show', '--name-status', '--format=', hash],
+        ['git', '-C', repoPath, 'show', '-M', '--name-status', '--format=', hash],
         { env }
       )
 
       const numstatOutput = await executeCommand(
-        ['git', '-C', repoPath, 'show', '--numstat', '--format=', hash],
+        ['git', '-C', repoPath, 'show', '-M', '--numstat', '--format=', hash],
         { env }
       )
 
@@ -485,11 +494,25 @@ export class GitService {
         { env }
       )
 
-      return this.parseDiffOutput(diff, 'modified', filePath)
+      const status = this.detectDiffStatus(diff)
+      return this.parseDiffOutput(diff, status, filePath)
     } catch (error: unknown) {
       logger.error(`Failed to get commit diff for repo ${repoId}:`, error)
       throw new Error(`Failed to get commit diff: ${getErrorMessage(error)}`)
     }
+  }
+
+  private detectDiffStatus(diff: string): GitFileStatusType {
+    if (diff.includes('new file mode')) {
+      return 'added'
+    }
+    if (diff.includes('deleted file mode')) {
+      return 'deleted'
+    }
+    if (diff.includes('rename from') || diff.includes('rename to')) {
+      return 'renamed'
+    }
+    return 'modified'
   }
 
   private async setupSSHIfNeeded(repoUrl: string | undefined, database: Database): Promise<void> {
