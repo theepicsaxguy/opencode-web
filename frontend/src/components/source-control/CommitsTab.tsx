@@ -6,7 +6,6 @@ import { GIT_UI_COLORS } from '@/lib/git-status-styles'
 interface CommitsTabProps {
   repoId: number
   onSelectCommit?: (hash: string) => void
-  branch?: string
 }
 
 function formatRelativeTime(timestamp: string): string {
@@ -29,7 +28,7 @@ function formatRelativeTime(timestamp: string): string {
   return `${diffMonths}mo ago`
 }
 
-export function CommitsTab({ repoId, onSelectCommit, branch }: CommitsTabProps) {
+export function CommitsTab({ repoId, onSelectCommit }: CommitsTabProps) {
   const { data, isLoading, error } = useGitLog(repoId, 50)
 
   if (isLoading) {
@@ -60,16 +59,8 @@ export function CommitsTab({ repoId, onSelectCommit, branch }: CommitsTabProps) 
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {branch && (
-        <div className="px-3 py-2 border-b border-border bg-muted/50">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Branch:</span>
-            <span className="text-sm font-mono text-foreground">{branch}</span>
-          </div>
-        </div>
-      )}
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex flex-col h-full overflow-x-hidden">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {data.commits.map((commit) => (
           <button
             key={commit.hash}
@@ -80,8 +71,8 @@ export function CommitsTab({ repoId, onSelectCommit, branch }: CommitsTabProps) 
               <GitCommit className="w-4 h-4 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{commit.message}</p>
-              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+              <p className="text-sm font-medium line-clamp-2">{commit.message}</p>
+              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground overflow-hidden">
                 <span className="font-mono">{commit.hash.substring(0, 7)}</span>
                 <span>·</span>
                 <span className="truncate">{commit.authorName}</span>

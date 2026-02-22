@@ -15,6 +15,8 @@ interface GitFlatFileListProps {
   onDiscard?: (paths: string[], staged: boolean) => void
   selectedFile?: string
   readOnly?: boolean
+  totalAdditions?: number
+  totalDeletions?: number
 }
 
 interface GroupedFiles {
@@ -33,6 +35,8 @@ export function GitFlatFileList({
   onDiscard,
   selectedFile,
   readOnly = false,
+  totalAdditions,
+  totalDeletions,
 }: GitFlatFileListProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<GitFileStatusType>>(new Set())
 
@@ -104,6 +108,12 @@ export function GitFlatFileList({
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {staged ? 'Staged Changes' : 'Changes'} ({filteredFiles.length})
         </span>
+        {(totalAdditions !== undefined && totalAdditions > 0 || totalDeletions !== undefined && totalDeletions > 0) && (
+          <div className="flex items-center gap-1 text-xs">
+            {totalAdditions !== undefined && totalAdditions > 0 && <span className="text-green-500">+{totalAdditions}</span>}
+            {totalDeletions !== undefined && totalDeletions > 0 && <span className="text-red-500">-{totalDeletions}</span>}
+          </div>
+        )}
         {!readOnly && (
           <div className="flex items-center gap-1">
             {onDiscard && (
